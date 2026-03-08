@@ -2,8 +2,8 @@
 import React, { useState } from 'react';
 import { useApp, Player } from './AppContext';
 
-const ROLES = ['Batsman', 'Bowler', 'All-rounder', 'Wicket-keeper'];
-const BATTING_STYLES = ['Right-hand', 'Left-hand'];
+const ROLES: Player['role'][] = ['Batsman', 'Bowler', 'All-rounder', 'Wicket-keeper'];
+const BATTING_STYLES: Player['battingStyle'][] = ['Right-hand', 'Left-hand'];
 const BOWLING_STYLES = ['Fast', 'Fast-medium', 'Medium', 'Off-break', 'Leg-spin', 'Slow left-arm', 'None'];
 
 const roleColors: Record<string, string> = {
@@ -19,8 +19,8 @@ function PlayerModal({ player, onSave, onClose }: {
   onClose: () => void;
 }) {
   const [name, setName] = useState(player?.name || '');
-  const [role, setRole] = useState(player?.role || 'Batsman');
-  const [battingStyle, setBattingStyle] = useState(player?.battingStyle || 'Right-hand');
+  const [role, setRole] = useState<Player['role']>(player?.role || 'Batsman');
+  const [battingStyle, setBattingStyle] = useState<Player['battingStyle']>(player?.battingStyle || 'Right-hand');
   const [bowlingStyle, setBowlingStyle] = useState(player?.bowlingStyle || 'None');
   const [age, setAge] = useState(player?.age?.toString() || '');
   const [team, setTeam] = useState(player?.team || '');
@@ -28,8 +28,8 @@ function PlayerModal({ player, onSave, onClose }: {
   const handleSave = () => {
     onSave({
       id: player?.id || `p${Date.now()}`,
-      name, role: role as Player['role'],
-      battingStyle: battingStyle as Player['battingStyle'],
+      name, role,
+      battingStyle,
       bowlingStyle, age: parseInt(age) || 0, team,
     });
   };
@@ -88,7 +88,7 @@ function PlayerModal({ player, onSave, onClose }: {
             <div>
               <label style={{ display: 'block', marginBottom: 6, fontSize: 11, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>BATTING</label>
               <select className="select-field" style={{ padding: '9px 12px', borderRadius: 6 }}
-                value={battingStyle} onChange={e => setBattingStyle(e.target.value)}>
+                value={battingStyle} onChange={e => setBattingStyle(e.target.value as Player['battingStyle'])}>
                 {BATTING_STYLES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
@@ -131,7 +131,7 @@ export default function Players() {
   const { players, addPlayer, setActivePage } = useApp();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
-  const [filterRole, setFilterRole] = useState('all');
+  const [filterRole, setFilterRole] = useState<Player['role'] | 'all'>('all');
   const [search, setSearch] = useState('');
 
   const filtered = players.filter(p => {
@@ -166,7 +166,7 @@ export default function Players() {
         <input className="input-field" style={{ padding: '7px 12px', borderRadius: 6, fontSize: 13, width: 220 }}
           placeholder="🔍 Search players..." value={search} onChange={e => setSearch(e.target.value)} />
         <div style={{ display: 'flex', gap: 6 }}>
-          {['all', ...ROLES].map(r => (
+          {(['all', ...ROLES] as const).map(r => (
             <button key={r} onClick={() => setFilterRole(r)} style={{
               padding: '5px 12px', borderRadius: 4,
               border: `1px solid ${filterRole === r ? (roleColors[r] || '#22c55e') : '#1f2937'}`,
