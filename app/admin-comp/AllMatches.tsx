@@ -9,10 +9,11 @@ const statusColors: Record<string, string> = {
   live: '#ef4444', upcoming: '#3b82f6', completed: '#22c55e',
 };
 
-function MatchRow({ match, onEdit, onDelete }: {
+function MatchRow({ match, onEdit, onDelete, onScore }: {
   match: Match;
   onEdit: () => void;
   onDelete: () => void;
+  onScore: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -81,7 +82,32 @@ function MatchRow({ match, onEdit, onDelete }: {
           <div>{match.time}</div>
         </td>
         <td style={{ padding: '12px 16px' }}>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {/* BCL Score button — prominent for live/upcoming */}
+            {(match.status === 'live' || match.status === 'upcoming') && (
+              <button
+                onClick={e => { e.stopPropagation(); onScore(); }}
+                style={{
+                  padding: '5px 10px', borderRadius: 4,
+                  background: match.status === 'live' ? '#ef444415' : '#22c55e15',
+                  border: `1px solid ${match.status === 'live' ? '#ef444433' : '#22c55e33'}`,
+                  color: match.status === 'live' ? '#ef4444' : '#22c55e',
+                  cursor: 'pointer',
+                  fontSize: 11, fontFamily: 'Orbitron', fontWeight: 700,
+                  letterSpacing: 0.5,
+                  transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLButtonElement).style.filter = 'brightness(1.2)';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLButtonElement).style.filter = 'brightness(1)';
+                }}
+              >
+                🎯 SCORE
+              </button>
+            )}
             <button
               onClick={e => { e.stopPropagation(); onEdit(); }}
               style={{
@@ -164,6 +190,24 @@ function MatchRow({ match, onEdit, onDelete }: {
                   📝 {match.notes}
                 </div>
               )}
+
+              {/* BCL Scorer launch from expanded row */}
+              <div style={{ gridColumn: '1 / -1', paddingTop: 6 }}>
+                <button
+                  onClick={onScore}
+                  style={{
+                    padding: '9px 20px', borderRadius: 6,
+                    background: 'linear-gradient(135deg, #14532d22, #22c55e11)',
+                    border: '1px solid #22c55e44',
+                    color: '#22c55e', cursor: 'pointer',
+                    fontFamily: 'Orbitron', fontSize: 11, fontWeight: 700,
+                    letterSpacing: 1,
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                  }}
+                >
+                  🎯 OPEN BCL SCORER FOR THIS MATCH
+                </button>
+              </div>
             </div>
           </td>
         </tr>
@@ -173,7 +217,7 @@ function MatchRow({ match, onEdit, onDelete }: {
 }
 
 export default function AllMatches() {
-  const { matches, deleteMatch, setEditingMatch, setActivePage } = useApp();
+  const { matches, deleteMatch, setEditingMatch, setActivePage, setScoringMatch } = useApp();
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterFormat, setFilterFormat] = useState('all');
@@ -199,6 +243,11 @@ export default function AllMatches() {
     transition: 'all 0.15s',
   });
 
+  function launchScorer(match: Match) {
+    setScoringMatch(match);       // store the match in context
+    setActivePage('bcl-scoring'); // navigate to scorer
+  }
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
@@ -206,13 +255,26 @@ export default function AllMatches() {
           <h1 className="font-display" style={{ fontSize: 28, letterSpacing: 3, color: '#f9fafb' }}>ALL MATCHES</h1>
           <div style={{ color: '#4b5563', fontSize: 13, marginTop: 2 }}>{filtered.length} of {matches.length} matches</div>
         </div>
-        <button
-          onClick={() => { setEditingMatch(null); setActivePage('add-match'); }}
-          className="btn-primary"
-          style={{ padding: '9px 20px', borderRadius: 6, fontSize: 14 }}
-        >
-          + ADD MATCH
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={() => setActivePage('bcl-scoring')}
+            style={{
+              padding: '9px 18px', borderRadius: 6,
+              background: '#22c55e15', border: '1px solid #22c55e44',
+              color: '#22c55e', cursor: 'pointer',
+              fontFamily: 'Orbitron', fontSize: 11, fontWeight: 700, letterSpacing: 1,
+            }}
+          >
+            🎯 BCL SCORER
+          </button>
+          <button
+            onClick={() => { setEditingMatch(null); setActivePage('add-match'); }}
+            className="btn-primary"
+            style={{ padding: '9px 20px', borderRadius: 6, fontSize: 14 }}
+          >
+            + ADD MATCH
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -296,6 +358,7 @@ export default function AllMatches() {
                   match={m}
                   onEdit={() => { setEditingMatch(m); setActivePage('add-match'); }}
                   onDelete={() => deleteMatch(m.id)}
+                  onScore={() => launchScorer(m)}
                 />
               ))
             )}

@@ -11,6 +11,7 @@ import Players from './Players';
 import { Latest, Schedule, Stats, Tournaments } from './OtherPages';
 import AddTeam from './AddTeam';
 import AddPlayer from './AddPlayer';
+import Bclscoring from './Bclscoring';
 
 function Settings() {
   return (
@@ -38,6 +39,7 @@ function PageContent() {
     players: <Players />,
     'add-player': <AddPlayer />,
     tournaments: <Tournaments />,
+    'bcl-scoring': <Bclscoring />,
     latest: <Latest />,
     stats: <Stats />,
     schedule: <Schedule />,

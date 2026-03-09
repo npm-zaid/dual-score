@@ -98,7 +98,7 @@ const seedMatches: Match[] = [
     level: 'national', type: 'professional', format: 'T20',
     teamA: seedTeams[0], teamB: seedTeams[1],
     venue: 'Wankhede Stadium, Mumbai', date: '2025-06-15', time: '19:30',
-    status: 'live', scoreA: '164/5 (18.2)', scoreB: '120/8 (16)',
+    status: 'live', scoreA: '0/0 ', scoreB: '0/0 ',
     tournament: 'Zilla Premier League 2025',
     umpires: ['Anil Kumar', 'Ravi Shastri'],
     createdAt: new Date().toISOString(),
@@ -130,6 +130,7 @@ interface AppState {
   sidebarOpen: boolean;
   activePage: string;
   editingMatch: Match | null;
+  scoringMatch: Match | null;   // ← the match currently being scored in BCL Scorer
 }
 
 interface AppContextType extends AppState {
@@ -143,6 +144,7 @@ interface AppContextType extends AppState {
   setSidebarOpen: (open: boolean) => void;
   setActivePage: (page: string) => void;
   setEditingMatch: (match: Match | null) => void;
+  setScoringMatch: (match: Match | null) => void;  // ← launch scorer for a specific match
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -154,6 +156,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activePage, setActivePage] = useState('dashboard');
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
+  const [scoringMatch, setScoringMatch] = useState<Match | null>(null);  // ← new
 
   const addMatch = useCallback((match: Match) => {
     setMatches(prev => [match, ...prev]);
@@ -161,10 +164,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateMatch = useCallback((match: Match) => {
     setMatches(prev => prev.map(m => m.id === match.id ? match : m));
+    // Keep scoringMatch in sync so the scorer always has fresh match data
+    setScoringMatch(prev => prev?.id === match.id ? match : prev);
   }, []);
 
   const deleteMatch = useCallback((id: string) => {
     setMatches(prev => prev.filter(m => m.id !== id));
+    // Clear scorer if the deleted match was being scored
+    setScoringMatch(prev => prev?.id === id ? null : prev);
   }, []);
 
   const addTeam = useCallback((team: Team) => {
@@ -186,10 +193,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       matches, teams, players,
-      sidebarOpen, activePage, editingMatch,
+      sidebarOpen, activePage, editingMatch, scoringMatch,
       addMatch, updateMatch, deleteMatch,
       addTeam, updateTeam, deleteTeam, addPlayer,
-      setSidebarOpen, setActivePage, setEditingMatch,
+      setSidebarOpen, setActivePage, setEditingMatch, setScoringMatch,
     }}>
       {children}
     </AppContext.Provider>

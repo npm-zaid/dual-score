@@ -4,7 +4,7 @@ import { useApp, Match } from './AppContext';
 
 // ===================== LATEST / LIVE PAGE =====================
 export function Latest() {
-  const { matches, setEditingMatch, setActivePage } = useApp();
+  const { matches, setEditingMatch, setActivePage, setScoringMatch } = useApp();
   const [tab, setTab] = useState<'live' | 'upcoming' | 'completed'>('live');
   const [tick, setTick] = useState(0);
 
@@ -13,12 +13,19 @@ export function Latest() {
     return () => clearInterval(i);
   }, []);
 
-  const liveMatches = matches.filter(m => m.status === 'live');
+  // Launch BCL Scorer for a match — sets it as the active scoring match then navigates
+  function launchScorer(m: Match, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    setScoringMatch(m);
+    setActivePage('bcl-scoring');
+  }
+
+  const liveMatches     = matches.filter(m => m.status === 'live');
   const upcomingMatches = matches.filter(m => m.status === 'upcoming');
   const completedMatches = matches.filter(m => m.status === 'completed');
 
   const tabMatches = tab === 'live' ? liveMatches : tab === 'upcoming' ? upcomingMatches : completedMatches;
-  const tabColors = { live: '#ef4444', upcoming: '#3b82f6', completed: '#22c55e' };
+  const tabColors  = { live: '#ef4444', upcoming: '#3b82f6', completed: '#22c55e' };
 
   return (
     <div style={{ padding: 24 }}>
@@ -27,7 +34,7 @@ export function Latest() {
         <div style={{ color: '#4b5563', fontSize: 13, marginTop: 2 }}>Live scores, upcoming fixtures & results</div>
       </div>
 
-      {/* Live feature card */}
+      {/* Live feature cards */}
       {liveMatches.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           {liveMatches.map(m => (
@@ -67,17 +74,35 @@ export function Latest() {
                 </div>
               </div>
 
+          
+
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                {/* Primary: open scorer */}
                 <button
-                  onClick={() => { setEditingMatch(m); setActivePage('add-match'); }}
+                  onClick={e => launchScorer(m, e)}
                   style={{
                     padding: '7px 16px', borderRadius: 6,
                     background: '#ef444415', border: '1px solid #ef444433',
                     color: '#ef4444', cursor: 'pointer',
-                    fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 13,
+                    fontFamily: 'Orbitron', fontWeight: 700, fontSize: 11,
+                    letterSpacing: 1,
+                    display: 'flex', alignItems: 'center', gap: 6,
                   }}
                 >
-                  UPDATE SCORE
+                  🎯 UPDATE SCORE
+                </button>
+
+                {/* Secondary: edit match details */}
+                <button
+                  onClick={e => { e.stopPropagation(); setEditingMatch(m); setActivePage('add-match'); }}
+                  style={{
+                    padding: '7px 14px', borderRadius: 6,
+                    background: 'transparent', border: '1px solid #1f2937',
+                    color: '#4b5563', cursor: 'pointer',
+                    fontFamily: 'Rajdhani', fontWeight: 600, fontSize: 12,
+                  }}
+                >
+                  EDIT DETAILS
                 </button>
               </div>
             </div>
@@ -116,18 +141,32 @@ export function Latest() {
             </div>
           </div>
         ) : tabMatches.map(m => (
-          <div key={m.id} className="card-hover" style={{
-            background: '#111827', border: '1px solid #1f2937',
-            borderRadius: 8, padding: '16px 18px',
-            cursor: 'pointer',
-          }}
-            onClick={() => { setEditingMatch(m); setActivePage('add-match'); }}
+          <div
+            key={m.id}
+            className="card-hover"
+            style={{
+              background: '#111827', border: '1px solid #1f2937',
+              borderRadius: 8, padding: '16px 18px',
+              cursor: 'pointer',
+            }}
+            onClick={() => launchScorer(m)}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
               <div>
-                <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#f9fafb', marginBottom: 4 }}>{m.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#f9fafb' }}>{m.title}</div>
+                  {/* Quick scorer icon for live/upcoming */}
+                  {(m.status === 'live' || m.status === 'upcoming') && (
+                    <span style={{
+                      fontSize: 9, fontFamily: 'Orbitron', color: '#22c55e',
+                      background: '#22c55e11', border: '1px solid #22c55e22',
+                      padding: '1px 6px', borderRadius: 3, letterSpacing: 1,
+                    }}>SCORER →</span>
+                  )}
+                </div>
                 <div style={{ fontSize: 12, color: '#4b5563' }}>📍 {m.venue} · 📅 {m.date} {m.time}</div>
               </div>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontFamily: 'Bebas Neue', fontSize: 16, color: '#f9fafb' }}>{m.teamA.shortName}</div>
@@ -140,8 +179,23 @@ export function Latest() {
                 </div>
               </div>
             </div>
+
             {m.result && (
               <div style={{ marginTop: 8, fontSize: 12, color: '#22c55e', fontWeight: 600 }}>🏆 {m.result}</div>
+            )}
+
+            {/* Edit details link for completed matches */}
+            {m.status === 'completed' && (
+              <div
+                onClick={e => { e.stopPropagation(); setEditingMatch(m); setActivePage('add-match'); }}
+                style={{
+                  marginTop: 8, fontSize: 11, color: '#374151',
+                  fontFamily: 'Orbitron', letterSpacing: 1, cursor: 'pointer',
+                  display: 'inline-block',
+                }}
+              >
+                EDIT DETAILS →
+              </div>
             )}
           </div>
         ))}
@@ -149,8 +203,7 @@ export function Latest() {
     </div>
   );
 }
-
-// ===================== SCHEDULE PAGE =====================
+// =================== SCHEDULE PAGE =====================
 export function Schedule() {
   const { matches, setEditingMatch, setActivePage } = useApp();
 
@@ -245,7 +298,7 @@ export function Schedule() {
   );
 }
 
-// ===================== STATS PAGE =====================
+// ==================== STATS PAGE =====================
 export function Stats() {
   const { matches, teams, players } = useApp();
 
@@ -343,7 +396,7 @@ export function Stats() {
   );
 }
 
-// ===================== TOURNAMENTS PAGE =====================
+// =================== TOURNAMENTS PAGE =====================
 export function Tournaments() {
   const { matches } = useApp();
 

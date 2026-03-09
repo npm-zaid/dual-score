@@ -6,27 +6,33 @@ const navItems = [
   {
     section: 'MAIN',
     items: [
-      { id: 'dashboard', icon: '⚡', label: 'Dashboard', badge: null },
-      { id: 'add-match', icon: '➕', label: 'Add Match', badge: null },
-      { id: 'matches', icon: '🏏', label: 'All Matches', badge: 'live' },
+      { id: 'dashboard',  icon: '⚡',  label: 'Dashboard',   badge: null },
+      { id: 'add-match',  icon: '➕',  label: 'Add Match',    badge: null },
+      { id: 'matches',    icon: '🏏',  label: 'All Matches',  badge: 'live' },
     ],
   },
   {
     section: 'MANAGEMENT',
     items: [
-      { id: 'teams', icon: '🛡️', label: 'Teams', badge: null },
-      { id: 'add-team', icon: '➕', label: 'Add Team', badge: null },
-      { id: 'players', icon: '👤', label: 'Players', badge: null },
-      { id: 'add-player', icon: '➕', label: 'Add Player', badge: null },
-      { id: 'tournaments', icon: '🏆', label: 'Tournaments', badge: null },
+      { id: 'teams',      icon: '🛡️',  label: 'Teams',        badge: null },
+      { id: 'add-team',   icon: '➕',  label: 'Add Team',     badge: null },
+      { id: 'players',    icon: '👤',  label: 'Players',      badge: null },
+      { id: 'add-player', icon: '➕',  label: 'Add Player',   badge: null },
+      { id: 'tournaments',icon: '🏆',  label: 'Tournaments',  badge: null },
     ],
   },
+  // {
+  //   section: 'SCORING',
+  //   items: [
+  //     { id: 'bcl-scoring', icon: '🎯', label: 'BCL Scorer',   badge: 'new' },
+  //   ],
+  // },
   {
     section: 'INSIGHTS',
     items: [
-      { id: 'latest', icon: '📡', label: 'Latest / Live', badge: null },
-      { id: 'stats', icon: '📊', label: 'Statistics', badge: null },
-      { id: 'schedule', icon: '📅', label: 'Schedule', badge: null },
+      { id: 'latest',   icon: '📡', label: 'Latest / Live', badge: null },
+      { id: 'stats',    icon: '📊', label: 'Statistics',    badge: null },
+      { id: 'schedule', icon: '📅', label: 'Schedule',      badge: null },
     ],
   },
   {
@@ -87,7 +93,6 @@ export default function Sidebar() {
           position: 'relative',
           overflow: 'hidden',
         }}>
-          {/* Glow behind logo */}
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
             background: 'linear-gradient(90deg, transparent, #22c55e, transparent)',
@@ -143,9 +148,12 @@ export default function Sidebar() {
               }}>
                 {group.section}
               </div>
+
               {group.items.map((item) => {
                 const isActive = activePage === item.id;
-                const showBadge = item.badge === 'live' && liveCount > 0;
+                const isLiveBadge = item.badge === 'live' && liveCount > 0;
+                const isNewBadge  = item.badge === 'new';
+
                 return (
                   <button
                     key={item.id}
@@ -183,7 +191,9 @@ export default function Sidebar() {
                   >
                     <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>{item.icon}</span>
                     <span style={{ flex: 1 }}>{item.label}</span>
-                    {showBadge && (
+
+                    {/* LIVE count badge */}
+                    {isLiveBadge && (
                       <span style={{
                         background: '#ef4444',
                         color: '#fff',
@@ -196,6 +206,22 @@ export default function Sidebar() {
                         textAlign: 'center',
                       }}>
                         {liveCount}
+                      </span>
+                    )}
+
+                    {/* NEW badge for BCL Scorer */}
+                    {isNewBadge && (
+                      <span style={{
+                        background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+                        color: '#000',
+                        fontSize: 8,
+                        fontFamily: 'Orbitron',
+                        fontWeight: 900,
+                        padding: '2px 6px',
+                        borderRadius: 2,
+                        letterSpacing: 1,
+                      }}>
+                        NEW
                       </span>
                     )}
                   </button>

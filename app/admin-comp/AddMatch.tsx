@@ -15,7 +15,7 @@ const TYPES: { value: TournamentType; label: string; desc: string }[] = [
   { value: 'normal', label: 'Normal', desc: 'Friendly matches' },
 ];
 
-const FORMATS: Format[] = ['T20', 'ODI', 'T10', '50-50', 'Test'];
+const FORMATS: Format[] = ['T20', 'ODI', 'T10', 'Test'];
 
 const STATUSES = ['upcoming', 'live', 'completed'];
 
@@ -224,6 +224,7 @@ export default function AddMatch() {
         )}
       </div>
 
+
       <div style={{
         background: '#111827',
         border: '1px solid #1f2937',
@@ -376,7 +377,7 @@ export default function AddMatch() {
                   placeholder="e.g. Zilla Premier League 2025"
                 />
               </div>
-
+              
               <div>
                 <label style={{ display: 'block', marginBottom: 6, color: '#9ca3af', fontSize: 12, fontFamily: 'Orbitron', letterSpacing: 1 }}>
                   VENUE
