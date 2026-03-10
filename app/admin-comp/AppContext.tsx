@@ -95,7 +95,7 @@ const seedTeams: Team[] = [
 const seedMatches: Match[] = [
   {
     id: 'm1', title: 'MSX vs RCC – Final',
-    level: 'national', type: 'professional', format: 'T20',
+    level: 'national', type: 'professional', format: 'T10',
     teamA: seedTeams[0], teamB: seedTeams[1],
     venue: 'Wankhede Stadium, Mumbai', date: '2025-06-15', time: '19:30',
     status: 'live', scoreA: '0/0 ', scoreB: '0/0 ',
