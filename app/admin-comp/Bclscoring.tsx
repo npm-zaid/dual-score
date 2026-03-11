@@ -33,7 +33,7 @@ const FORMAT_OVERS: Record<string, number> = {
   'T10': 10, 'T20': 20, 'ODI': 50, 'Test': 90,
 };
 function getOversFromFormat(format?: string): number {
-  return FORMAT_OVERS[format ?? ''] ?? 20;
+  return FORMAT_OVERS[format ?? ''] ?? 10;
 }
 
 const BALLS_PER_OVER = 6;
@@ -43,10 +43,15 @@ const MAX_WICKETS = 10;
 interface BatterStats {
   name: string; runs: number; balls: number;
   fours: number; sixes: number; dismissed: boolean; dotBalls: number;
+  /** Bowling score conceded while this batter was on strike (for Net Run calc) */
+  bowlConceded: number;
 }
 interface BowlerStats {
   name: string; legalBalls: number; runs: number;
   wickets: number; wides: number; noBalls: number;
+  /** Bowling score acquired by this bowler (for Net Bowl Score calc) */
+  bowlAcquired: number;
+  dotBalls: number; fours: number; sixes: number;
 }
 interface Ball {
   event: string; runs: number; bat: number; bowl: number;
@@ -68,10 +73,10 @@ function initInnings(battingTeam: string, bowlingTeam: string): Innings {
   };
 }
 function newBatter(name: string): BatterStats {
-  return { name, runs: 0, balls: 0, fours: 0, sixes: 0, dismissed: false, dotBalls: 0 };
+  return { name, runs: 0, balls: 0, fours: 0, sixes: 0, dismissed: false, dotBalls: 0, bowlConceded: 0 };
 }
 function newBowler(name: string): BowlerStats {
-  return { name, legalBalls: 0, runs: 0, wickets: 0, wides: 0, noBalls: 0 };
+  return { name, legalBalls: 0, runs: 0, wickets: 0, wides: 0, noBalls: 0, bowlAcquired: 0, dotBalls: 0, fours: 0, sixes: 0 };
 }
 function sr(runs: number, balls: number) { return balls === 0 ? '0.0' : ((runs / balls) * 100).toFixed(1); }
 function economy(runs: number, lb: number) { return lb === 0 ? '0.00' : ((runs / lb) * 6).toFixed(2); }
@@ -95,7 +100,6 @@ function ModalSub({ children }: { children: React.ReactNode }) {
 }
 
 // ── Player Dropdown ──────────────────────────────────────────────────────────
-// Shows existing registered players + lets you add a new name by typing
 function PlayerDropdown({ label, value, onChange, players, color = '#3b82f6', exclude = [] }: {
   label: string; value: string; onChange: (v: string) => void;
   players: string[]; color?: string; exclude?: string[];
@@ -112,13 +116,10 @@ function PlayerDropdown({ label, value, onChange, players, color = '#3b82f6', ex
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
-  // Players eligible to show: not in exclude list
   const eligible = players.filter(p => !exclude.includes(p));
-  // Filter by search
   const filtered = search.trim()
     ? eligible.filter(p => p.toLowerCase().includes(search.toLowerCase()))
     : eligible;
-  // Show "add new" option if typed name doesn't match any existing
   const typedUp = search.trim().toUpperCase();
   const canAdd = typedUp.length > 0 && !players.map(p => p.toUpperCase()).includes(typedUp) && !exclude.includes(typedUp);
 
@@ -131,8 +132,6 @@ function PlayerDropdown({ label, value, onChange, players, color = '#3b82f6', ex
   return (
     <div ref={wrapRef} style={{ marginBottom: 14, position: 'relative' }}>
       <div style={{ fontSize: 9, fontFamily: 'Orbitron', color, letterSpacing: 2, marginBottom: 5 }}>{label}</div>
-
-      {/* Trigger button */}
       <div
         onClick={() => setOpen(o => !o)}
         style={{
@@ -148,7 +147,6 @@ function PlayerDropdown({ label, value, onChange, players, color = '#3b82f6', ex
         <span style={{ fontSize: 10, color, marginLeft: 8 }}>{open ? '▲' : '▼'}</span>
       </div>
 
-      {/* Dropdown panel */}
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
@@ -157,7 +155,6 @@ function PlayerDropdown({ label, value, onChange, players, color = '#3b82f6', ex
           boxShadow: '0 12px 40px #000000bb',
           overflow: 'hidden',
         }}>
-          {/* Search / type new */}
           <div style={{ padding: '8px 10px', borderBottom: `1px solid ${color}22` }}>
             <input
               autoFocus
@@ -193,7 +190,6 @@ function PlayerDropdown({ label, value, onChange, players, color = '#3b82f6', ex
               </div>
             ))}
 
-            {/* Add new */}
             {canAdd && (
               <div
                 onClick={() => select(typedUp)}
@@ -281,7 +277,6 @@ function NewBatterModal({ battingTeam, wicketBatter, battingPlayers, activeBatte
   onConfirm: (name: string) => void;
 }) {
   const [name, setName] = useState('');
-  // Exclude already-used batters (except dismissed one who is already marked dismissed)
   const exclude = activeBatters;
 
   return (
@@ -399,12 +394,41 @@ function btnStyle(bg: string, color: string, full = false): React.CSSProperties 
 }
 
 // ── ScoreBoard ────────────────────────────────────────────────────────────────
-function ScoreBoard({ inn, label, inningsNum, otherInn }: {
-  inn: Innings; label: string; inningsNum: number; otherInn?: Innings | null;
+/**
+ * SCORING RULES:
+ *
+ * 1ST INNINGS (inningsNum=0):
+ *   - Shows live batting & bowling scores for that innings only.
+ *   - No dual score shown (only one innings has been played).
+ *
+ * 2ND INNINGS (inningsNum=1):
+ *   - inn0 scores (Team A bat, Team B bowl) are now FINAL/STATIC — locked in from innings 1.
+ *   - inn1 scores (Team B bat, Team A bowl) are LIVE and changing.
+ *
+ *   Dual Score definitions (updates live during 2nd innings):
+ *     Team A (was batting in inn0, now bowling in inn1):
+ *       Dual = inn0.batScore (FINAL) + inn1.bowlScore (LIVE)
+ *     Team B (was bowling in inn0, now batting in inn1):
+ *       Dual = inn0.bowlScore (FINAL) + inn1.batScore (LIVE)
+ *
+ *   Display breakdown in the card:
+ *     Team B card (battingTeam of inn1):
+ *       Shows: Bat (inn1.batScore live) + Bowl¹ (inn0.bowlScore FINAL) = Dual
+ *     Team A card (bowlingTeam of inn1):
+ *       Shows: Bowl (inn1.bowlScore live) + Bat¹ (inn0.batScore FINAL) = Dual
+ */
+function ScoreBoard({ inn, label, inningsNum, otherInn, isSecondInningsLive }: {
+  inn: Innings;
+  label: string;
+  inningsNum: number;
+  otherInn?: Innings | null;
+  /** True when the 2nd innings is currently in progress (not just initialized). */
+  isSecondInningsLive?: boolean;
 }) {
   const overs = Math.floor(inn.legalBalls / 6);
   const balls = inn.legalBalls % 6;
 
+  // ── 1ST INNINGS card ──────────────────────────────────────────────────────
   if (inningsNum === 0) {
     return (
       <div style={{ background: '#0a0f16', border: '1px solid #1f2937', borderRadius: 10, padding: '16px 20px', flex: 1, position: 'relative', overflow: 'hidden', minWidth: 220 }}>
@@ -415,7 +439,10 @@ function ScoreBoard({ inn, label, inningsNum, otherInn }: {
             {inn.batScore}<span style={{ fontSize: 18, color: '#ef4444' }}>/{inn.wickets}</span>
           </span>
           <span style={{ fontFamily: 'Orbitron', fontSize: 13, color: '#22c55e', fontWeight: 700 }}>{overs}.{balls} Ov</span>
+          {inn.complete && <span style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#22c55e55', letterSpacing: 1 }}>FINAL</span>}
         </div>
+
+        {/* Batting team row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#3b82f611', border: '1px solid #3b82f633', borderRadius: 6, padding: '8px 12px', marginBottom: 8 }}>
           <div>
             <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#3b82f6', letterSpacing: 1, marginBottom: 3 }}>BATTING</div>
@@ -426,6 +453,8 @@ function ScoreBoard({ inn, label, inningsNum, otherInn }: {
             <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: '#3b82f6', lineHeight: 1 }}>{inn.batScore}</div>
           </div>
         </div>
+
+        {/* Bowling team row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9731611', border: '1px solid #f9731633', borderRadius: 6, padding: '8px 12px' }}>
           <div>
             <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#f97316', letterSpacing: 1, marginBottom: 3 }}>BOWLING</div>
@@ -436,12 +465,33 @@ function ScoreBoard({ inn, label, inningsNum, otherInn }: {
             <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: '#f97316', lineHeight: 1 }}>{inn.bowlScore}</div>
           </div>
         </div>
+
+        {/* Note: no dual score during 1st innings */}
+        {!isSecondInningsLive && (
+          <div style={{ marginTop: 10, fontSize: 10, color: '#1f2937', fontFamily: 'Orbitron', letterSpacing: 1, textAlign: 'center' }}>
+            DUAL SCORES CALCULATED AFTER 2ND INNINGS
+          </div>
+        )}
       </div>
     );
   }
 
-  const battingTeamDual = inn.batScore + (otherInn?.bowlScore ?? 0);
-  const bowlingTeamDual = inn.bowlScore + (otherInn?.batScore ?? 0);
+  // ── 2ND INNINGS card ──────────────────────────────────────────────────────
+  // inn  = innings[1] — Team B batting LIVE, Team A bowling LIVE
+  // otherInn = innings[0] — Team A batting FINAL, Team B bowling FINAL
+  //
+  // Team B (battingTeam of inn1):
+  //   Dual = inn1.batScore (live) + inn0.bowlScore (final)
+  // Team A (bowlingTeam of inn1):
+  //   Dual = inn1.bowlScore (live) + inn0.batScore (final)
+
+  const inn0BatFinal  = otherInn?.batScore  ?? 0;   // Team A bat — FINAL
+  const inn0BowlFinal = otherInn?.bowlScore ?? 0;   // Team B bowl — FINAL
+
+  // Dual scores (live)
+  const teamBDual = inn.batScore + inn0BowlFinal;   // Team B: bat(live) + bowl¹(final)
+  const teamADual = inn.bowlScore + inn0BatFinal;   // Team A: bowl(live) + bat¹(final)
+
   return (
     <div style={{ background: '#0a0f16', border: '1px solid #22c55e33', borderRadius: 10, padding: '16px 20px', flex: 1, position: 'relative', overflow: 'hidden', minWidth: 220 }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, transparent, #22c55e88, transparent)' }} />
@@ -452,26 +502,36 @@ function ScoreBoard({ inn, label, inningsNum, otherInn }: {
         </span>
         <span style={{ fontFamily: 'Orbitron', fontSize: 13, color: '#22c55e', fontWeight: 700 }}>{overs}.{balls} Ov</span>
       </div>
+
+      {/* Team B (BATTING in inn1) — dual score updates live */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#22c55e11', border: '1px solid #22c55e33', borderRadius: 6, padding: '8px 12px', marginBottom: 8 }}>
         <div>
           <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#22c55e', letterSpacing: 1, marginBottom: 3 }}>BATTING · DUAL</div>
           <div style={{ fontFamily: 'Bebas Neue', fontSize: 22, letterSpacing: 2, color: '#f9fafb', lineHeight: 1 }}>{inn.battingTeam}</div>
-          <div style={{ fontSize: 9, fontFamily: 'Rajdhani', color: '#4b5563', marginTop: 3 }}>Bat {inn.batScore} + Bowl¹ {otherInn?.bowlScore ?? 0}</div>
+          {/* Breakdown: live bat + final bowl from inn0 */}
+          <div style={{ fontSize: 9, fontFamily: 'Rajdhani', color: '#4b5563', marginTop: 3 }}>
+            Bat² {inn.batScore} <span style={{ color: '#374151' }}>+</span> Bowl¹ <span style={{ color: '#22c55e88' }}>{inn0BowlFinal}</span>
+          </div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#4b5563', letterSpacing: 1, marginBottom: 2 }}>DUAL SCORE</div>
-          <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: '#22c55e', lineHeight: 1 }}>{battingTeamDual}</div>
+          <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: '#22c55e', lineHeight: 1 }}>{teamBDual}</div>
         </div>
       </div>
+
+      {/* Team A (BOWLING in inn1) — dual score updates live */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#a3e63511', border: '1px solid #a3e63533', borderRadius: 6, padding: '8px 12px' }}>
         <div>
           <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#a3e635', letterSpacing: 1, marginBottom: 3 }}>BOWLING · DUAL</div>
           <div style={{ fontFamily: 'Bebas Neue', fontSize: 22, letterSpacing: 2, color: '#f9fafb', lineHeight: 1 }}>{inn.bowlingTeam}</div>
-          <div style={{ fontSize: 9, fontFamily: 'Rajdhani', color: '#4b5563', marginTop: 3 }}>Bowl {inn.bowlScore} + Bat¹ {otherInn?.batScore ?? 0}</div>
+          {/* Breakdown: live bowl + final bat from inn0 */}
+          <div style={{ fontSize: 9, fontFamily: 'Rajdhani', color: '#4b5563', marginTop: 3 }}>
+            Bowl² {inn.bowlScore} <span style={{ color: '#374151' }}>+</span> Bat¹ <span style={{ color: '#a3e63588' }}>{inn0BatFinal}</span>
+          </div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#4b5563', letterSpacing: 1, marginBottom: 2 }}>DUAL SCORE</div>
-          <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: '#a3e635', lineHeight: 1 }}>{bowlingTeamDual}</div>
+          <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: '#a3e635', lineHeight: 1 }}>{teamADual}</div>
         </div>
       </div>
     </div>
@@ -484,36 +544,93 @@ function CreasePanel({ inn }: { inn: Innings }) {
   const nonStriker = inn.batters[inn.nonStrikerIdx];
   const bowler = inn.bowlers[inn.bowlerIdx];
   if (!striker || !bowler) return null;
+
+  // Net Run = Runs Scored − Bowl Score Conceded by this batter
+  // Bowl score conceded is stored as positive (it's what the bowler earned), so batter's net = runs - bowlConceded
+  const strikerNet = striker.runs - striker.bowlConceded;
+  const nonStrikerNet = nonStriker ? nonStriker.runs - nonStriker.bowlConceded : 0;
+  // Net Bowl Score = Bowl Score Acquired − Runs Conceded by this bowler
+  const bowlerNet = bowler.bowlAcquired - bowler.runs;
+
+  function netColor(val: number) { return val > 0 ? '#22c55e' : val < 0 ? '#ef4444' : '#9ca3af'; }
+
   return (
     <div style={{ background: '#0a1018', border: '1px solid #1a2540', borderRadius: 10, padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-      <div style={{ flex: 1, minWidth: 140, background: '#22c55e0d', border: '1px solid #22c55e22', borderRadius: 8, padding: '10px 12px' }}>
+
+      {/* STRIKER */}
+      <div style={{ flex: 1, minWidth: 155, background: '#22c55e0d', border: '1px solid #22c55e22', borderRadius: 8, padding: '10px 12px' }}>
         <div style={{ fontSize: 8, fontFamily: 'Orbitron', color: '#22c55e', letterSpacing: 2, marginBottom: 4 }}>⚡ ON STRIKE</div>
         <div style={{ fontFamily: 'Bebas Neue', fontSize: 20, letterSpacing: 2, color: '#f9fafb', lineHeight: 1 }}>{striker.name}</div>
-        <div style={{ marginTop: 5, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'Orbitron', fontSize: 18, fontWeight: 900, color: '#22c55e' }}>{striker.runs}</span>
-          <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'Rajdhani', alignSelf: 'flex-end', paddingBottom: 2 }}>({striker.balls}b) SR {sr(striker.runs, striker.balls)}</span>
+
+        {/* Runs + balls */}
+        <div style={{ marginTop: 6, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={{ fontFamily: 'Orbitron', fontSize: 20, fontWeight: 900, color: '#22c55e' }}>{striker.runs}</span>
+          <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'Rajdhani' }}>({striker.balls}b) SR {sr(striker.runs, striker.balls)}</span>
         </div>
-        <div style={{ marginTop: 4, fontSize: 10, color: '#4b5563', fontFamily: 'Rajdhani' }}>4s: {striker.fours}  6s: {striker.sixes}</div>
+
+        {/* Bowl Conceded + Net Run */}
+        <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11, fontFamily: 'Rajdhani' }}>
+          <span style={{ color: '#6b7280' }}>Bowl Con: <span style={{ color: '#f97316' }}>{striker.bowlConceded}</span></span>
+          <span style={{ color: '#6b7280' }}>Net: <span style={{ fontFamily: 'Orbitron', fontSize: 12, fontWeight: 700, color: netColor(strikerNet) }}>{strikerNet > 0 ? '+' : ''}{strikerNet}</span></span>
+        </div>
+
+        {/* Dots / 4s / 6s */}
+        <div style={{ marginTop: 4, fontSize: 10, color: '#4b5563', fontFamily: 'Rajdhani', display: 'flex', gap: 10 }}>
+          <span>● {striker.dotBalls}</span>
+          <span style={{ color: '#f97316' }}>4s {striker.fours}</span>
+          <span style={{ color: '#22c55e' }}>6s {striker.sixes}</span>
+        </div>
       </div>
+
+      {/* NON-STRIKER */}
       {nonStriker && (
-        <div style={{ flex: 1, minWidth: 140, background: '#3b82f60d', border: '1px solid #3b82f622', borderRadius: 8, padding: '10px 12px' }}>
+        <div style={{ flex: 1, minWidth: 155, background: '#3b82f60d', border: '1px solid #3b82f622', borderRadius: 8, padding: '10px 12px' }}>
           <div style={{ fontSize: 8, fontFamily: 'Orbitron', color: '#3b82f6', letterSpacing: 2, marginBottom: 4 }}>NON-STRIKER</div>
           <div style={{ fontFamily: 'Bebas Neue', fontSize: 20, letterSpacing: 2, color: '#f9fafb', lineHeight: 1 }}>{nonStriker.name}</div>
-          <div style={{ marginTop: 5, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'Orbitron', fontSize: 18, fontWeight: 900, color: '#3b82f6' }}>{nonStriker.runs}</span>
-            <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'Rajdhani', alignSelf: 'flex-end', paddingBottom: 2 }}>({nonStriker.balls}b) SR {sr(nonStriker.runs, nonStriker.balls)}</span>
+
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontFamily: 'Orbitron', fontSize: 20, fontWeight: 900, color: '#3b82f6' }}>{nonStriker.runs}</span>
+            <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'Rajdhani' }}>({nonStriker.balls}b) SR {sr(nonStriker.runs, nonStriker.balls)}</span>
           </div>
-          <div style={{ marginTop: 4, fontSize: 10, color: '#4b5563', fontFamily: 'Rajdhani' }}>4s: {nonStriker.fours}  6s: {nonStriker.sixes}</div>
+
+          <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11, fontFamily: 'Rajdhani' }}>
+            <span style={{ color: '#6b7280' }}>Bowl Con: <span style={{ color: '#f97316' }}>{nonStriker.bowlConceded}</span></span>
+            <span style={{ color: '#6b7280' }}>Net: <span style={{ fontFamily: 'Orbitron', fontSize: 12, fontWeight: 700, color: netColor(nonStrikerNet) }}>{nonStrikerNet > 0 ? '+' : ''}{nonStrikerNet}</span></span>
+          </div>
+
+          <div style={{ marginTop: 4, fontSize: 10, color: '#4b5563', fontFamily: 'Rajdhani', display: 'flex', gap: 10 }}>
+            <span>● {nonStriker.dotBalls}</span>
+            <span style={{ color: '#f97316' }}>4s {nonStriker.fours}</span>
+            <span style={{ color: '#22c55e' }}>6s {nonStriker.sixes}</span>
+          </div>
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 140, background: '#f973160d', border: '1px solid #f9731622', borderRadius: 8, padding: '10px 12px' }}>
+
+      {/* BOWLER */}
+      <div style={{ flex: 1, minWidth: 155, background: '#f973160d', border: '1px solid #f9731622', borderRadius: 8, padding: '10px 12px' }}>
         <div style={{ fontSize: 8, fontFamily: 'Orbitron', color: '#f97316', letterSpacing: 2, marginBottom: 4 }}>🎯 BOWLING</div>
         <div style={{ fontFamily: 'Bebas Neue', fontSize: 20, letterSpacing: 2, color: '#f9fafb', lineHeight: 1 }}>{bowler.name}</div>
-        <div style={{ marginTop: 5, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'Orbitron', fontSize: 18, fontWeight: 900, color: '#f97316' }}>{bowler.wickets}/{bowler.runs}</span>
-          <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'Rajdhani', alignSelf: 'flex-end', paddingBottom: 2 }}>({oversStr(bowler.legalBalls)} ov) Econ {economy(bowler.runs, bowler.legalBalls)}</span>
+
+        {/* Wickets/Runs + Overs */}
+        <div style={{ marginTop: 6, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={{ fontFamily: 'Orbitron', fontSize: 20, fontWeight: 900, color: '#f97316' }}>{bowler.wickets}/{bowler.runs}</span>
+          <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'Rajdhani' }}>({oversStr(bowler.legalBalls)} ov) Econ {economy(bowler.runs, bowler.legalBalls)}</span>
         </div>
-        <div style={{ marginTop: 4, fontSize: 10, color: '#4b5563', fontFamily: 'Rajdhani' }}>WD: {bowler.wides}  NB: {bowler.noBalls}</div>
+
+        {/* Bowl Acquired + Net Bowl Score */}
+        <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11, fontFamily: 'Rajdhani' }}>
+          <span style={{ color: '#6b7280' }}>Bowl Acq: <span style={{ color: '#22c55e' }}>{bowler.bowlAcquired}</span></span>
+          <span style={{ color: '#6b7280' }}>Net: <span style={{ fontFamily: 'Orbitron', fontSize: 12, fontWeight: 700, color: netColor(bowlerNet) }}>{bowlerNet > 0 ? '+' : ''}{bowlerNet}</span></span>
+        </div>
+
+        {/* Dots / 4s conceded / 6s conceded + Wides/NoBalls */}
+        <div style={{ marginTop: 4, fontSize: 10, color: '#4b5563', fontFamily: 'Rajdhani', display: 'flex', gap: 10 }}>
+          <span>● {bowler.dotBalls}</span>
+          <span style={{ color: '#f97316' }}>4s {bowler.fours}</span>
+          <span style={{ color: '#22c55e' }}>6s {bowler.sixes}</span>
+          <span style={{ color: '#a855f7' }}>WD {bowler.wides}</span>
+          <span style={{ color: '#eab308' }}>NB {bowler.noBalls}</span>
+        </div>
       </div>
     </div>
   );
@@ -532,7 +649,7 @@ function ScorecardTable({ inn }: { inn: Innings }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: 'Rajdhani' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #1f2937' }}>
-                  {['BATTER','R','B','4s','6s','SR','STATUS'].map(h => (
+                  {['BATTER','R','B','●','4s','6s','SR','BOWL CON','NET RUN','STATUS'].map(h => (
                     <th key={h} style={{ padding: '5px 8px', textAlign: h==='BATTER'?'left':'right', fontSize: 9, fontFamily: 'Orbitron', color: '#374151', letterSpacing: 1, fontWeight: 400 }}>{h}</th>
                   ))}
                 </tr>
@@ -541,6 +658,8 @@ function ScorecardTable({ inn }: { inn: Innings }) {
                 {batters.map((b, i) => {
                   const isStriker = !inn.complete && i === inn.strikerIdx;
                   const isNS = !inn.complete && i === inn.nonStrikerIdx;
+                  const netRun = b.runs - b.bowlConceded;
+                  const netColor = netRun > 0 ? '#22c55e' : netRun < 0 ? '#ef4444' : '#6b7280';
                   return (
                     <tr key={i} style={{ borderBottom: '1px solid #0d1520', background: isStriker ? '#22c55e08' : isNS ? '#3b82f608' : 'transparent' }}>
                       <td style={{ padding: '7px 8px', color: b.dismissed ? '#6b7280' : '#f9fafb', fontWeight: 700 }}>
@@ -551,9 +670,12 @@ function ScorecardTable({ inn }: { inn: Innings }) {
                       </td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', fontFamily: 'Orbitron', fontWeight: 900, color: b.dismissed ? '#6b7280' : '#f9fafb', fontSize: 13 }}>{b.runs}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: '#6b7280' }}>{b.balls}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', color: '#4b5563' }}>{b.dotBalls}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: '#f97316' }}>{b.fours}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: '#22c55e' }}>{b.sixes}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: '#9ca3af', fontSize: 11 }}>{sr(b.runs, b.balls)}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', color: '#f97316', fontSize: 11 }}>{b.bowlConceded}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', fontFamily: 'Orbitron', fontWeight: 700, fontSize: 12, color: netColor }}>{netRun > 0 ? '+' : ''}{netRun}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 10 }}>
                         {b.dismissed ? <span style={{ color: '#ef4444' }}>OUT</span>
                           : isStriker ? <span style={{ color: '#22c55e' }}>BATTING*</span>
@@ -574,7 +696,7 @@ function ScorecardTable({ inn }: { inn: Innings }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: 'Rajdhani' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #1f2937' }}>
-                  {['BOWLER','O','R','W','WD','NB','ECON'].map(h => (
+                  {['BOWLER','O','R','W','●','4s','6s','WD','NB','BOWL ACQ','NET BOWL','ECON'].map(h => (
                     <th key={h} style={{ padding: '5px 8px', textAlign: h==='BOWLER'?'left':'right', fontSize: 9, fontFamily: 'Orbitron', color: '#374151', letterSpacing: 1, fontWeight: 400 }}>{h}</th>
                   ))}
                 </tr>
@@ -582,6 +704,8 @@ function ScorecardTable({ inn }: { inn: Innings }) {
               <tbody>
                 {bowlers.map((b, i) => {
                   const isCurrent = !inn.complete && i === inn.bowlerIdx;
+                  const netBowl = b.bowlAcquired - b.runs;
+                  const netColor = netBowl > 0 ? '#22c55e' : netBowl < 0 ? '#ef4444' : '#6b7280';
                   return (
                     <tr key={i} style={{ borderBottom: '1px solid #0d1520', background: isCurrent ? '#f9731608' : 'transparent' }}>
                       <td style={{ padding: '7px 8px', color: '#f9fafb', fontWeight: 700 }}>
@@ -591,8 +715,13 @@ function ScorecardTable({ inn }: { inn: Innings }) {
                       <td style={{ padding: '7px 8px', textAlign: 'right', fontFamily: 'Orbitron', color: '#9ca3af', fontSize: 11 }}>{oversStr(b.legalBalls)}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', fontFamily: 'Orbitron', fontWeight: 900, color: '#f9fafb', fontSize: 13 }}>{b.runs}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', fontFamily: 'Orbitron', fontWeight: 900, color: b.wickets > 0 ? '#ef4444' : '#6b7280', fontSize: 13 }}>{b.wickets}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', color: '#4b5563' }}>{b.dotBalls}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', color: '#f97316' }}>{b.fours}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', color: '#22c55e' }}>{b.sixes}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: '#a855f7' }}>{b.wides}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: '#eab308' }}>{b.noBalls}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', color: '#22c55e', fontSize: 11 }}>{b.bowlAcquired}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', fontFamily: 'Orbitron', fontWeight: 700, fontSize: 12, color: netColor }}>{netBowl > 0 ? '+' : ''}{netBowl}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: '#9ca3af', fontSize: 11 }}>{economy(b.runs, b.legalBalls)}</td>
                     </tr>
                   );
@@ -649,7 +778,6 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
   const [teamA, setTeamA] = useState(scoringMatch?.teamA?.shortName || scoringMatch?.teamA?.name || 'TEAM A');
   const [teamB, setTeamB] = useState(scoringMatch?.teamB?.shortName || scoringMatch?.teamB?.name || 'TEAM B');
 
-  // Player rosters — sourced from scoringMatch if available, else built up during scoring
   const [teamAPlayers, setTeamAPlayers] = useState<string[]>(() =>
     (scoringMatch?.teamA?.players || []).map((p: any) => (p.name || p).toString().toUpperCase())
   );
@@ -663,18 +791,21 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
   const [modal, setModal] = useState<ModalState | null>(null);
   const [matchOver, setMatchOver] = useState(false);
   const [activeTab, setActiveTab] = useState<'score' | 'scorecard' | 'balls'>('score');
+
+  /**
+   * Track whether the 2nd innings has actually started (opening setup confirmed).
+   * This gates whether we show the 2nd innings scoreboard.
+   */
+  const [secondInningsStarted, setSecondInningsStarted] = useState(false);
+
   const prevLegalBalls = useRef<number>(0);
   const prevWicketBallIdx = useRef<number>(-1);
 
-  // Ensure new player names get added to the roster
   function ensurePlayer(team: 'A' | 'B', name: string) {
     if (team === 'A') setTeamAPlayers(p => p.includes(name) ? p : [...p, name]);
     else setTeamBPlayers(p => p.includes(name) ? p : [...p, name]);
   }
 
-  // Who is batting/bowling in each innings
-  // innings 0: teamA bats, teamB bowls
-  // innings 1: teamB bats, teamA bowls
   function battingTeamPlayers(innIdx: number) { return innIdx === 0 ? teamAPlayers : teamBPlayers; }
   function bowlingTeamPlayers(innIdx: number)  { return innIdx === 0 ? teamBPlayers : teamAPlayers; }
   function battingTeamLabel(innIdx: number)    { return innIdx === 0 ? 'A' : 'B'; }
@@ -701,6 +832,7 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
     setInningsIdx(0);
     setStarted(true);
     setMatchOver(false);
+    setSecondInningsStarted(false);
     prevLegalBalls.current = 0;
     prevWicketBallIdx.current = -1;
     setModal({ type: 'opening', inningsIdx: 0 });
@@ -711,6 +843,10 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
     ensurePlayer(battingTeamLabel(innIdx), striker);
     ensurePlayer(battingTeamLabel(innIdx), nonStriker);
     ensurePlayer(bowlingTeamLabel(innIdx), bowler);
+
+    // Mark 2nd innings as started when innIdx === 1
+    if (innIdx === 1) setSecondInningsStarted(true);
+
     setInnings(prev => {
       const all = [...prev] as [Innings | null, Innings | null];
       const inn = { ...all[innIdx]! };
@@ -747,6 +883,8 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
       if (event === 'six') batStat.sixes += 1;
       if (bat === 0 && isLegal) batStat.dotBalls += 1;
       if (isWicket) batStat.dismissed = true;
+      // Track bowling score conceded by this batter (the negative bowl value = runs against bowler)
+      batStat.bowlConceded += bowl; // bowl is the score the bowling team earned (negative for batter)
 
       const bowlStat = bowlersCopy[inn.bowlerIdx];
       if (isLegal) bowlStat.legalBalls += 1;
@@ -754,6 +892,11 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
       else bowlStat.wickets += 1;
       if (event === 'wide') bowlStat.wides += 1;
       if (event === 'noball') bowlStat.noBalls += 1;
+      // Track bowling score acquired by this bowler
+      bowlStat.bowlAcquired += bowl;
+      if (bat === 0 && isLegal) bowlStat.dotBalls += 1;
+      if (event === 'four') bowlStat.fours += 1;
+      if (event === 'six') bowlStat.sixes += 1;
 
       inn.batScore += bat;
       inn.bowlScore += bowl;
@@ -880,6 +1023,8 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
         if (last.event === 'four') b.fours = Math.max(0, b.fours - 1);
         if (last.event === 'six') b.sixes = Math.max(0, b.sixes - 1);
         if (last.event === 'wicket') b.dismissed = false;
+        if (last.bat === 0 && last.event !== 'wide') b.dotBalls = Math.max(0, b.dotBalls - 1);
+        b.bowlConceded -= last.bowl;
       }
       inn.batters = battersCopy;
       const bowlersCopy = inn.bowlers.map(b => ({ ...b }));
@@ -891,6 +1036,10 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
         else b.wickets = Math.max(0, b.wickets - 1);
         if (last.event === 'wide') b.wides = Math.max(0, b.wides - 1);
         if (last.event === 'noball') b.noBalls = Math.max(0, b.noBalls - 1);
+        b.bowlAcquired -= last.bowl;
+        if (last.bat === 0 && last.event !== 'wide') b.dotBalls = Math.max(0, b.dotBalls - 1);
+        if (last.event === 'four') b.fours = Math.max(0, b.fours - 1);
+        if (last.event === 'six') b.sixes = Math.max(0, b.sixes - 1);
       }
       inn.bowlers = bowlersCopy;
       all[inningsIdx] = inn;
@@ -898,7 +1047,6 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
       return all;
     });
     prevLegalBalls.current = innings[inningsIdx]?.legalBalls ?? 0;
-    // If we undid a wicket, step back the wicket pointer so it can re-fire if needed
     const afterUndo = innings[inningsIdx]?.balls.filter(b => b.event !== '_bonus') ?? [];
     prevWicketBallIdx.current = afterUndo.length - 1;
   }
@@ -1013,8 +1161,25 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
         {activeTab === 'score' && (
           <>
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-              {inn0 && <ScoreBoard inn={inn0} label={`1ST INNINGS${inn0.complete ? ' ✓' : inningsIdx === 0 ? ' · LIVE' : ''}`} inningsNum={0} />}
-              {inn1 && <ScoreBoard inn={inn1} label={`2ND INNINGS${inn1.complete ? ' ✓' : inningsIdx === 1 ? ' · LIVE' : ''}`} inningsNum={1} otherInn={inn0} />}
+              {/* 1st innings card — always shown once match starts */}
+              {inn0 && (
+                <ScoreBoard
+                  inn={inn0}
+                  label={`1ST INNINGS${inn0.complete ? ' · FINAL' : ' · LIVE'}`}
+                  inningsNum={0}
+                  isSecondInningsLive={secondInningsStarted}
+                />
+              )}
+              {/* 2nd innings card — only shown after 2nd innings has started */}
+              {inn1 && secondInningsStarted && (
+                <ScoreBoard
+                  inn={inn1}
+                  label={`2ND INNINGS${inn1.complete ? ' · FINAL' : ' · LIVE'}`}
+                  inningsNum={1}
+                  otherInn={inn0}
+                  isSecondInningsLive={secondInningsStarted}
+                />
+              )}
             </div>
 
             {!matchOver && activeInn && activeInn.batters.length > 0 && !modal && <CreasePanel inn={activeInn} />}
@@ -1069,7 +1234,7 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
                 <ScorecardTable inn={inn0} />
               </div>
             )}
-            {inn1 && inn1.batters.length > 0 && (
+            {inn1 && inn1.batters.length > 0 && secondInningsStarted && (
               <div>
                 <div style={{ fontSize: 10, fontFamily: 'Orbitron', color: '#4b5563', letterSpacing: 2, marginBottom: 8 }}>2ND INNINGS</div>
                 <ScorecardTable inn={inn1} />
@@ -1086,7 +1251,7 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             {[
               { label: `1ST INNINGS · ${inn0?.battingTeam}`, overs: overs0 },
-              { label: `2ND INNINGS · ${inn1?.battingTeam}`, overs: overs1 },
+              ...(secondInningsStarted ? [{ label: `2ND INNINGS · ${inn1?.battingTeam}`, overs: overs1 }] : []),
             ].map(({ label, overs }) => overs.length > 0 && (
               <div key={label} style={{ background: '#0d1520', border: '1px solid #1f2937', borderRadius: 10, padding: '14px 16px' }}>
                 <div style={{ fontSize: 10, fontFamily: 'Orbitron', color: '#374151', letterSpacing: 2, marginBottom: 10 }}>{label}</div>
