@@ -312,14 +312,14 @@ export default function AllMatches() {
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 4 }}>
+        {/* <div style={{ display: 'flex', gap: 4 }}>
           {['all', 'T20', 'ODI', 'T10', 'Test'].map(f => (
             <button key={f} style={filterBtnStyle(filterFormat === f)}
               onClick={() => setFilterFormat(f)}>
               {f.toUpperCase()}
             </button>
           ))}
-        </div>
+        </div> */}
       </div>
 
       {/* Table */}

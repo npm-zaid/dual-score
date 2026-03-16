@@ -35,16 +35,16 @@ const navItems = [
   {
     section: 'INSIGHTS',
     items: [
-      { id: 'latest',           icon: '📡',  label: 'Live / Latest',    badge: null },
-      { id: 'stats',            icon: '📊',  label: 'Statistics',       badge: null },
-      { id: 'schedule',         icon: '📅',  label: 'Schedule',         badge: null },
-      { id: 'bcl-scoring',      icon: '🎯',  label: 'BCL Scorer',       badge: 'new' },
+      // { id: 'latest',           icon: '📡',  label: 'Live / Latest',    badge: null },
+      // { id: 'stats',            icon: '📊',  label: 'Statistics',       badge: null },
+      // { id: 'schedule',         icon: '📅',  label: 'Schedule',         badge: null },
+      { id: 'bcl-scoring', icon: '🎯',  label: 'BCL Scorer',       badge: 'new' },
     ],
   },
   {
     section: 'SETTINGS',
     items: [
-      { id: 'settings',         icon: '⚙️',  label: 'Settings',         badge: null },
+      { id: 'settings',   icon: '⚙️',  label: 'Settings',  badge: null },
     ],
   },
 ];

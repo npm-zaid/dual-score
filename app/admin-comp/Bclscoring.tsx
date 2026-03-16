@@ -13,7 +13,6 @@ function roleBadgeColor(role: string) {
 
 // ── BCL Scoring Logic ────────────────────────────────────────────────────────
 type RunSource = 'bat' | 'bye' | 'legbye';
-
 interface DeliveryConfig {
   event: string; batRuns: number; extraRuns: number; totalRuns: number;
   bowlScore: number; isLegal: boolean; isWicket: boolean; runSource: RunSource;
@@ -393,7 +392,7 @@ function ScoreBoard({ inn, label, inningsNum, otherInn, isSecondInningsLive }: {
           <div style={{fontSize:9,fontFamily:'Orbitron',color:'#22c55e',letterSpacing:1,marginBottom:3}}>BATTING · DUAL</div>
           <div style={{fontFamily:'Bebas Neue',fontSize:22,letterSpacing:2,color:'#f9fafb',lineHeight:1}}>{inn.battingTeam}</div>
         </div>
-        <div style={{fontSize:9,fontFamily:'Rajdhani',color:'#4b5563',marginTop:3}}>Bat² {inn.batScore} <span style={{color:'#374151'}}>+</span> Bowl¹ <span style={{color:'#22c55e88'}}>{inn0BowlFinal}</span></div>
+        <div style={{fontSize:12,fontFamily:'Rajdhani',color:'white',marginTop:3}}>Bat² {inn.batScore} <span style={{color:'red'}}>+</span> Bowl¹ <span style={{color:'#22c55e'}}>{inn0BowlFinal}</span></div>
         <div style={{textAlign:'right'}}><div style={{fontSize:9,fontFamily:'Orbitron',color:'#4b5563',letterSpacing:1,marginBottom:2}}>DUAL SCORE</div><div style={{fontFamily:'Orbitron',fontSize:28,fontWeight:900,color:'#22c55e',lineHeight:1}}>{teamBDual}</div></div>
       </div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#a3e63511',border:'1px solid #a3e63533',borderRadius:6,padding:'8px 12px'}}>
@@ -401,7 +400,7 @@ function ScoreBoard({ inn, label, inningsNum, otherInn, isSecondInningsLive }: {
           <div style={{fontSize:9,fontFamily:'Orbitron',color:'#a3e635',letterSpacing:1,marginBottom:3}}>BOWLING · DUAL</div>
           <div style={{fontFamily:'Bebas Neue',fontSize:22,letterSpacing:2,color:'#f9fafb',lineHeight:1}}>{inn.bowlingTeam}</div>
         </div>
-        <div style={{fontSize:9,fontFamily:'Rajdhani',color:'#4b5563',marginTop:3}}>Bowl² {inn.bowlScore} <span style={{color:'#374151'}}>+</span> Bat¹ <span style={{color:'#a3e63588'}}>{inn0BatFinal}</span></div>
+        <div style={{fontSize:12,fontFamily:'Rajdhani',color:'white',marginTop:3}}>Bowl² {inn.bowlScore} <span style={{color:'red'}}>+</span> Bat¹ <span style={{color:'#a3e635'}}>{inn0BatFinal}</span></div>
         <div style={{textAlign:'right'}}><div style={{fontSize:9,fontFamily:'Orbitron',color:'#4b5563',letterSpacing:1,marginBottom:2}}>DUAL SCORE</div><div style={{fontFamily:'Orbitron',fontSize:28,fontWeight:900,color:'#a3e635',lineHeight:1}}>{teamADual}</div></div>
       </div>
     </div>

@@ -1,6 +1,8 @@
 'use client';
 import React, { useState } from 'react';
-import { useApp, Team, Player, TeamCategory } from './AppContext';
+import { useApp, Team, TeamCategory } from './AppContext';
+import EditTeamModal from './EditTeammodal';
+
 
 const CATEGORIES: { value: TeamCategory; label: string; icon: string; color: string; glow: string }[] = [
   { value: 'international', label: 'International', icon: '🌍', color: '#f97316', glow: '#f9731633' },
@@ -47,9 +49,7 @@ function TeamCard({ team, onEdit, onDelete }: { team: Team; onEdit: () => void; 
                 <div style={{ fontFamily: 'Bebas Neue', fontSize: 20, letterSpacing: 2, color: '#f9fafb', lineHeight: 1 }}>{team.name}</div>
                 {team.homeGround && <div style={{ fontSize: 11, color: '#4b5563', marginTop: 1 }}>📍 {team.homeGround}</div>}
                 {(team.country || team.state || team.city) && (
-                  <div style={{ fontSize: 11, color: '#374151' }}>
-                    {team.country || team.state || team.city}
-                  </div>
+                  <div style={{ fontSize: 11, color: '#374151' }}>{team.country || team.state || team.city}</div>
                 )}
               </div>
             </div>
@@ -61,24 +61,37 @@ function TeamCard({ team, onEdit, onDelete }: { team: Team; onEdit: () => void; 
       </div>
 
       <div style={{ padding: '12px 16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-          <div style={{ background: '#0d1117', borderRadius: 6, padding: '7px 10px' }}>
+        {/* Stats row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
+          <div style={{ background: '#0d1117', borderRadius: 6, padding: '6px 8px' }}>
             <div style={{ fontSize: 9, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>PLAYERS</div>
-            <div style={{ fontFamily: 'Orbitron', fontSize: 20, fontWeight: 900, color: '#f9fafb' }}>{teamPlayers.length}</div>
+            <div style={{ fontFamily: 'Orbitron', fontSize: 18, fontWeight: 900, color: '#f9fafb' }}>{teamPlayers.length}</div>
           </div>
-          <div style={{ background: '#0d1117', borderRadius: 6, padding: '7px 10px' }}>
-            <div style={{ fontSize: 9, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>COLOR</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
-              <div style={{ width: 14, height: 14, background: team.color, borderRadius: 3 }} />
-              <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'Orbitron' }}>{team.color}</span>
+          {team.wins !== undefined && (
+            <div style={{ background: '#0d1117', borderRadius: 6, padding: '6px 8px' }}>
+              <div style={{ fontSize: 9, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>WINS</div>
+              <div style={{ fontFamily: 'Orbitron', fontSize: 18, fontWeight: 900, color: '#22c55e' }}>{team.wins}</div>
             </div>
-          </div>
+          )}
+          {team.titles !== undefined && (
+            <div style={{ background: '#0d1117', borderRadius: 6, padding: '6px 8px' }}>
+              <div style={{ fontSize: 9, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>TITLES</div>
+              <div style={{ fontFamily: 'Orbitron', fontSize: 18, fontWeight: 900, color: team.color }}>{team.titles}</div>
+            </div>
+          )}
         </div>
 
         {captain && (
           <div style={{ marginBottom: 10, fontSize: 12, fontFamily: 'Rajdhani' }}>
             <span style={{ color: '#4b5563' }}>Captain: </span>
             <span style={{ color: '#22c55e', fontWeight: 700 }}>👑 {captain.name}</span>
+          </div>
+        )}
+
+        {team.coach && (
+          <div style={{ marginBottom: 8, fontSize: 12, fontFamily: 'Rajdhani' }}>
+            <span style={{ color: '#4b5563' }}>Coach: </span>
+            <span style={{ color: '#9ca3af' }}>🎯 {team.coach}</span>
           </div>
         )}
 
@@ -101,10 +114,25 @@ function TeamCard({ team, onEdit, onDelete }: { team: Team; onEdit: () => void; 
         )}
 
         <div style={{ display: 'flex', gap: 7 }}>
-          <button onClick={onEdit} style={{ flex: 1, padding: '8px', background: `${team.color}15`, border: `1px solid ${team.color}33`, color: team.color, borderRadius: 6, cursor: 'pointer', fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 12, transition: 'all 0.15s' }}>
-            EDIT TEAM
+          <button
+            onClick={onEdit}
+            style={{
+              flex: 1, padding: '8px',
+              background: `${team.color}15`, border: `1px solid ${team.color}33`,
+              color: team.color, borderRadius: 6, cursor: 'pointer',
+              fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 12, transition: 'all 0.15s',
+            }}
+          >
+            ✏️ EDIT TEAM
           </button>
-          <button onClick={onDelete} style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444433', color: '#ef4444', borderRadius: 6, cursor: 'pointer', fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 12, transition: 'all 0.15s' }}>
+          <button
+            onClick={onDelete}
+            style={{
+              padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444433',
+              color: '#ef4444', borderRadius: 6, cursor: 'pointer',
+              fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 12, transition: 'all 0.15s',
+            }}
+          >
             ✕
           </button>
         </div>
@@ -114,9 +142,10 @@ function TeamCard({ team, onEdit, onDelete }: { team: Team; onEdit: () => void; 
 }
 
 export default function Teams() {
-  const { teams, players, deleteTeam, updateTeam, setActivePage } = useApp();
+  const { teams, deleteTeam, setActivePage } = useApp();
   const [activeCategory, setActiveCategory] = useState<TeamCategory | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
 
   const filtered = teams.filter(t => {
     if (activeCategory !== 'all' && t.category !== activeCategory) return false;
@@ -213,7 +242,7 @@ export default function Teams() {
                   <TeamCard
                     key={team.id}
                     team={team}
-                    onEdit={() => setActivePage('add-team')}
+                    onEdit={() => setEditingTeam(team)}
                     onDelete={() => deleteTeam(team.id)}
                   />
                 ))}
@@ -237,13 +266,21 @@ export default function Teams() {
                 <TeamCard
                   key={team.id}
                   team={team}
-                  onEdit={() => setActivePage('add-team')}
+                  onEdit={() => setEditingTeam(team)}
                   onDelete={() => deleteTeam(team.id)}
                 />
               ))}
             </div>
           )}
         </>
+      )}
+
+      {/* Edit Team Modal — rendered inline, no navigation */}
+      {editingTeam && (
+       <EditTeamModal
+          team={editingTeam}
+          onClose={() => setEditingTeam(null)}
+        />
       )}
     </div>
   );
