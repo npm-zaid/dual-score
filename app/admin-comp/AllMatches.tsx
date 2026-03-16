@@ -16,6 +16,9 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
   onScore: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // ← FIX: Match has tournamentId (string | undefined), not match.tournament
+  const { getTournamentById } = useApp();
+  const tournament = match.tournamentId ? getTournamentById(match.tournamentId) : undefined;
 
   return (
     <>
@@ -33,7 +36,7 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
         <td style={{ padding: '12px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {match.status === 'live' && (
-              <span className="live-dot" style={{
+              <span style={{
                 width: 6, height: 6, borderRadius: '50%',
                 background: '#ef4444', display: 'inline-block', flexShrink: 0,
               }} />
@@ -42,24 +45,29 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
               {match.title}
             </span>
           </div>
-          {match.tournament && (
-            <div style={{ fontSize: 11, color: '#4b5563', marginTop: 2 }}>{match.tournament}</div>
+          {/* ← FIX: use resolved tournament object */}
+          {tournament && (
+            <div style={{ fontSize: 11, color: '#4b5563', marginTop: 2 }}>{tournament.name}</div>
           )}
         </td>
         <td style={{ padding: '12px 8px' }}>
-          <span className="badge" style={{
+          <span style={{
             background: `${statusColors[match.status]}18`,
             color: statusColors[match.status],
             border: `1px solid ${statusColors[match.status]}33`,
+            fontSize: 10, fontFamily: 'Orbitron', fontWeight: 700,
+            padding: '2px 8px', borderRadius: 3,
           }}>
             {match.status.toUpperCase()}
           </span>
         </td>
         <td style={{ padding: '12px 8px' }}>
-          <span className="badge" style={{
+          <span style={{
             background: `${levelColors[match.level]}18`,
             color: levelColors[match.level],
             border: `1px solid ${levelColors[match.level]}33`,
+            fontSize: 10, fontFamily: 'Orbitron', fontWeight: 700,
+            padding: '2px 8px', borderRadius: 3,
           }}>
             {match.level.toUpperCase()}
           </span>
@@ -83,7 +91,6 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
         </td>
         <td style={{ padding: '12px 16px' }}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {/* BCL Score button — prominent for live/upcoming */}
             {(match.status === 'live' || match.status === 'upcoming') && (
               <button
                 onClick={e => { e.stopPropagation(); onScore(); }}
@@ -92,18 +99,12 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
                   background: match.status === 'live' ? '#ef444415' : '#22c55e15',
                   border: `1px solid ${match.status === 'live' ? '#ef444433' : '#22c55e33'}`,
                   color: match.status === 'live' ? '#ef4444' : '#22c55e',
-                  cursor: 'pointer',
-                  fontSize: 11, fontFamily: 'Orbitron', fontWeight: 700,
-                  letterSpacing: 0.5,
-                  transition: 'all 0.15s',
-                  display: 'flex', alignItems: 'center', gap: 4,
+                  cursor: 'pointer', fontSize: 11,
+                  fontFamily: 'Orbitron', fontWeight: 700, letterSpacing: 0.5,
+                  transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 4,
                 }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLButtonElement).style.filter = 'brightness(1.2)';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLButtonElement).style.filter = 'brightness(1)';
-                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.filter = 'brightness(1.2)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.filter = 'brightness(1)'; }}
               >
                 🎯 SCORE
               </button>
@@ -114,8 +115,7 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
                 padding: '5px 12px', borderRadius: 4,
                 background: '#22c55e15', border: '1px solid #22c55e33',
                 color: '#22c55e', cursor: 'pointer',
-                fontSize: 12, fontFamily: 'Rajdhani', fontWeight: 600,
-                transition: 'all 0.15s',
+                fontSize: 12, fontFamily: 'Rajdhani', fontWeight: 600, transition: 'all 0.15s',
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#22c55e22'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#22c55e15'; }}
@@ -128,8 +128,7 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
                 padding: '5px 10px', borderRadius: 4,
                 background: '#ef444415', border: '1px solid #ef444433',
                 color: '#ef4444', cursor: 'pointer',
-                fontSize: 12, fontFamily: 'Rajdhani', fontWeight: 600,
-                transition: 'all 0.15s',
+                fontSize: 12, fontFamily: 'Rajdhani', fontWeight: 600, transition: 'all 0.15s',
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#ef444422'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#ef444415'; }}
@@ -140,7 +139,6 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
         </td>
       </tr>
 
-      {/* Expanded row */}
       {expanded && (
         <tr style={{ background: '#0a0f16' }}>
           <td colSpan={7} style={{ padding: '14px 16px' }}>
@@ -151,7 +149,16 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
                   <div>📍 {match.venue}</div>
                   <div>🏏 Format: {match.format}</div>
                   <div>🎯 Type: {match.type}</div>
+                  {/* ← FIX: tossWinner is a team ID, resolve to name */}
+                  {match.tossWinner && (
+                    <div>🪙 Toss: {
+                      match.tossWinner === match.teamA.id ? match.teamA.shortName :
+                      match.tossWinner === match.teamB.id ? match.teamB.shortName :
+                      match.tossWinner
+                    } elected to {match.tossDecision}</div>
+                  )}
                   {match.umpires && <div>👨‍⚖️ Umpires: {match.umpires.join(', ')}</div>}
+                  {tournament && <div>🏆 Tournament: {tournament.shortName}</div>}
                 </div>
               </div>
               <div>
@@ -190,8 +197,6 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
                   📝 {match.notes}
                 </div>
               )}
-
-              {/* BCL Scorer launch from expanded row */}
               <div style={{ gridColumn: '1 / -1', paddingTop: 6 }}>
                 <button
                   onClick={onScore}
@@ -200,8 +205,7 @@ function MatchRow({ match, onEdit, onDelete, onScore }: {
                     background: 'linear-gradient(135deg, #14532d22, #22c55e11)',
                     border: '1px solid #22c55e44',
                     color: '#22c55e', cursor: 'pointer',
-                    fontFamily: 'Orbitron', fontSize: 11, fontWeight: 700,
-                    letterSpacing: 1,
+                    fontFamily: 'Orbitron', fontSize: 11, fontWeight: 700, letterSpacing: 1,
                     display: 'inline-flex', alignItems: 'center', gap: 8,
                   }}
                 >
@@ -244,16 +248,16 @@ export default function AllMatches() {
   });
 
   function launchScorer(match: Match) {
-    setScoringMatch(match);       // store the match in context
-    setActivePage('bcl-scoring'); // navigate to scorer
+    setScoringMatch(match);
+    setActivePage('bcl-scoring');
   }
 
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 className="font-display" style={{ fontSize: 28, letterSpacing: 3, color: '#f9fafb' }}>ALL MATCHES</h1>
-          <div style={{ color: '#4b5563', fontSize: 13, marginTop: 2 }}>{filtered.length} of {matches.length} matches</div>
+          <h1 style={{ fontFamily: 'Bebas Neue', fontSize: 28, letterSpacing: 3, color: '#f9fafb', margin: 0 }}>ALL MATCHES</h1>
+          <div style={{ color: '#4b5563', fontSize: 13, marginTop: 2, fontFamily: 'Rajdhani' }}>{filtered.length} of {matches.length} matches</div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button
@@ -269,8 +273,12 @@ export default function AllMatches() {
           </button>
           <button
             onClick={() => { setEditingMatch(null); setActivePage('add-match'); }}
-            className="btn-primary"
-            style={{ padding: '9px 20px', borderRadius: 6, fontSize: 14 }}
+            style={{
+              padding: '9px 20px', borderRadius: 6, fontSize: 14,
+              background: 'linear-gradient(135deg, #16a34a, #22c55e)', border: 'none', color: '#000',
+              cursor: 'pointer', fontFamily: 'Orbitron', fontWeight: 900, letterSpacing: 1,
+              boxShadow: '0 0 20px #22c55e33',
+            }}
           >
             + ADD MATCH
           </button>
@@ -279,56 +287,35 @@ export default function AllMatches() {
 
       {/* Filters */}
       <div style={{
-        background: '#111827',
-        border: '1px solid #1f2937',
-        borderRadius: 8,
-        padding: '14px 16px',
-        marginBottom: 16,
+        background: '#111827', border: '1px solid #1f2937', borderRadius: 8,
+        padding: '14px 16px', marginBottom: 16,
         display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
       }}>
         <input
-          className="input-field"
-          style={{ padding: '7px 12px', borderRadius: 6, fontSize: 13, width: 220 }}
+          style={{ padding: '7px 12px', borderRadius: 6, fontSize: 13, width: 220, background: '#0d1117', border: '1px solid #374151', color: '#f9fafb', outline: 'none', fontFamily: 'Rajdhani' }}
           placeholder="🔍 Search matches..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
+          value={search} onChange={e => setSearch(e.target.value)}
         />
-
         <div style={{ display: 'flex', gap: 4 }}>
-          {['all', 'live', 'upcoming', 'completed'].map(s => (
+          {(['all', 'live', 'upcoming', 'completed'] as const).map(s => (
             <button key={s} style={filterBtnStyle(filterStatus === s, statusColors[s] || '#22c55e')}
               onClick={() => setFilterStatus(s)}>
               {s.toUpperCase()}
             </button>
           ))}
         </div>
-
         <div style={{ display: 'flex', gap: 4 }}>
-          {['all', 'international', 'national', 'state', 'city'].map(l => (
+          {(['all', 'international', 'national', 'state', 'city'] as const).map(l => (
             <button key={l} style={filterBtnStyle(filterLevel === l, levelColors[l] || '#22c55e')}
               onClick={() => setFilterLevel(l)}>
               {l.toUpperCase()}
             </button>
           ))}
         </div>
-
-        {/* <div style={{ display: 'flex', gap: 4 }}>
-          {['all', 'T20', 'ODI', 'T10', 'Test'].map(f => (
-            <button key={f} style={filterBtnStyle(filterFormat === f)}
-              onClick={() => setFilterFormat(f)}>
-              {f.toUpperCase()}
-            </button>
-          ))}
-        </div> */}
       </div>
 
       {/* Table */}
-      <div style={{
-        background: '#111827',
-        border: '1px solid #1f2937',
-        borderRadius: 8,
-        overflow: 'hidden',
-      }}>
+      <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 8, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #1f2937', background: '#0d1117' }}>

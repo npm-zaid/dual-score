@@ -13,7 +13,6 @@ const NATIONALITY_FLAGS: Record<string, string> = {
   'Bangladesh': '🇧🇩', 'Afghanistan': '🇦🇫', 'Zimbabwe': '🇿🇼', 'Ireland': '🇮🇪',
   'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Netherlands': '🇳🇱', 'UAE': '🇦🇪', 'Other': '🌍',
 };
-
 const COUNTRIES = Object.keys(NATIONALITY_FLAGS);
 
 const roleColors: Record<string, string> = {
@@ -28,7 +27,9 @@ const roleDesc: Record<string, string> = {
 };
 
 /* ─── Section wrapper ─── */
-function Section({ title, icon, children, delay = 0 }: { title: string; icon: string; children: React.ReactNode; delay?: number }) {
+function Section({ title, icon, children, delay = 0 }: {
+  title: string; icon: string; children: React.ReactNode; delay?: number;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -51,6 +52,35 @@ function Section({ title, icon, children, delay = 0 }: { title: string; icon: st
   );
 }
 
+/* ─── FIX: typed StatRow component — avoids mixed-array tuple inference error ─── */
+interface StatRowProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  isText?: boolean;
+}
+function StatRow({ label, value, onChange, placeholder, isText = false }: StatRowProps) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #1f2937', padding: '9px 0' }}>
+      <span style={{ flex: 1, fontSize: 12, color: '#9ca3af', fontFamily: 'Rajdhani', fontWeight: 600 }}>{label}</span>
+      <input
+        style={{
+          width: 110, padding: '6px 10px', borderRadius: 4,
+          fontSize: 14, fontFamily: 'Orbitron', fontWeight: 700,
+          textAlign: 'right', background: '#0d1117', border: '1px solid #374151',
+          color: '#f9fafb', outline: 'none',
+        }}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        type={isText ? 'text' : 'number'}
+        min={isText ? undefined : 0}
+      />
+    </div>
+  );
+}
+
 /* ─── AddPlayer ─── */
 export function AddPlayer() {
   const { addPlayer, teams, setActivePage } = useApp();
@@ -60,12 +90,11 @@ export function AddPlayer() {
   const [battingStyle, setBattingStyle] = useState<typeof BATTING_STYLES[number]>('Right-hand');
   const [bowlingStyle, setBowlingStyle] = useState<typeof BOWLING_STYLES[number]>('None');
   const [age, setAge] = useState('');
-  const [nationality, setNationality] = useState('India');   // ← NEW
-  const [jerseyNo, setJerseyNo] = useState('');              // ← NEW
+  const [nationality, setNationality] = useState('India');
+  const [jerseyNo, setJerseyNo] = useState('');
   const [baseTeam, setBaseTeam] = useState('');
-  const [bio, setBio] = useState('');                        // ← NEW
+  const [bio, setBio] = useState('');
 
-  // Stats
   const [totalRuns, setTotalRuns] = useState('');
   const [totalBalls, setTotalBalls] = useState('');
   const [totalWickets, setTotalWickets] = useState('');
@@ -91,7 +120,9 @@ export function AddPlayer() {
     const player: Player = {
       id: `p${Date.now()}`,
       name: name.trim(),
-      role, battingStyle, bowlingStyle,
+      role,
+      battingStyle,
+      bowlingStyle,
       age: parseInt(age) || 0,
       nationality,
       jerseyNo: parseInt(jerseyNo) || undefined,
@@ -178,10 +209,8 @@ export function AddPlayer() {
               </div>
               <div>
                 {lbl('JERSEY NUMBER')}
-                <input style={inputSt} type="number" value={jerseyNo} onChange={e => setJerseyNo(e.target.value)} placeholder="7" min={0} max={999} />
+                <input style={inputSt} type="number" value={jerseyNo} onChange={e => setJerseyNo(e.target.value)} placeholder="7" />
               </div>
-
-              {/* ── NATIONALITY ── */}
               <div style={{ gridColumn: '1/-1' }}>
                 {lbl('NATIONALITY')}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
@@ -194,13 +223,12 @@ export function AddPlayer() {
                       fontFamily: 'Rajdhani', fontWeight: 600, transition: 'all 0.15s',
                       display: 'flex', alignItems: 'center', gap: 4,
                     }}>
-                      <span>{NATIONALITY_FLAGS[c]}</span>
-                      <span style={{ fontSize: 10 }}>{c}</span>
+                      <span style={{ fontSize: 14 }}>{NATIONALITY_FLAGS[c]}</span>
+                      <span>{c}</span>
                     </button>
                   ))}
                 </div>
               </div>
-
               <div>
                 {lbl('BASE TEAM')}
                 <input style={inputSt} value={baseTeam} onChange={e => setBaseTeam(e.target.value)} placeholder="Team name" list="teams-list" />
@@ -210,11 +238,7 @@ export function AddPlayer() {
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 {lbl('BIO / NOTES')}
-                <textarea
-                  style={{ ...inputSt, height: 70, resize: 'vertical' }}
-                  value={bio} onChange={e => setBio(e.target.value)}
-                  placeholder="Brief description, achievements..."
-                />
+                <textarea style={{ ...inputSt, height: 70, resize: 'vertical' }} value={bio} onChange={e => setBio(e.target.value)} placeholder="Brief description, achievements..." />
               </div>
             </div>
           </Section>
@@ -258,36 +282,20 @@ export function AddPlayer() {
             </div>
           </Section>
 
-          {/* STATS */}
+          {/* ── STATS: StatRow components instead of mixed-array .map() ── */}
           <Section title="CAREER STATS (OPTIONAL)" icon="📊" delay={240}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div>
-                <div style={{ fontSize: 10, fontFamily: 'Orbitron', color, letterSpacing: 1, marginBottom: 10 }}>BATTING</div>
-                {[
-                  ['TOTAL RUNS', totalRuns, setTotalRuns, '0'],
-                  ['TOTAL BALLS', totalBalls, setTotalBalls, '0'],
-                  ['HIGH SCORE', highScore, setHighScore, '0'],
-                  ['TOTAL MATCHES', totalMatches, setTotalMatches, '0'],
-                ].map(([label, val, setter, placeholder]) => (
-                  <div key={label as string} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #1f2937', padding: '9px 0' }}>
-                    <span style={{ flex: 1, fontSize: 12, color: '#9ca3af', fontFamily: 'Rajdhani', fontWeight: 600 }}>{label}</span>
-                    <input style={{ width: 110, padding: '6px 10px', borderRadius: 4, fontSize: 14, fontFamily: 'Orbitron', fontWeight: 700, textAlign: 'right', background: '#0d1117', border: '1px solid #374151', color: '#f9fafb', outline: 'none' }}
-                      value={val as string} onChange={e => (setter as any)(e.target.value)} placeholder={placeholder as string} type="number" min={0} />
-                  </div>
-                ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+              <div style={{ paddingRight: 20, borderRight: '1px solid #1f2937' }}>
+                <div style={{ fontSize: 10, fontFamily: 'Orbitron', color, letterSpacing: 1, marginBottom: 8 }}>BATTING</div>
+                <StatRow label="Total Runs"    value={totalRuns}    onChange={setTotalRuns}    placeholder="0" />
+                <StatRow label="Total Balls"   value={totalBalls}   onChange={setTotalBalls}   placeholder="0" />
+                <StatRow label="High Score"    value={highScore}    onChange={setHighScore}    placeholder="0" />
+                <StatRow label="Total Matches" value={totalMatches} onChange={setTotalMatches} placeholder="0" />
               </div>
-              <div>
-                <div style={{ fontSize: 10, fontFamily: 'Orbitron', color, letterSpacing: 1, marginBottom: 10 }}>BOWLING</div>
-                {[
-                  ['TOTAL WICKETS', totalWickets, setTotalWickets, '0'],
-                  ['BEST BOWLING', bestBowling, setBestBowling, '5/27'],
-                ].map(([label, val, setter, placeholder]) => (
-                  <div key={label as string} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #1f2937', padding: '9px 0' }}>
-                    <span style={{ flex: 1, fontSize: 12, color: '#9ca3af', fontFamily: 'Rajdhani', fontWeight: 600 }}>{label}</span>
-                    <input style={{ width: 110, padding: '6px 10px', borderRadius: 4, fontSize: 14, fontFamily: 'Orbitron', fontWeight: 700, textAlign: 'right', background: '#0d1117', border: '1px solid #374151', color: '#f9fafb', outline: 'none' }}
-                      value={val as string} onChange={e => (setter as any)(e.target.value)} placeholder={placeholder as string} />
-                  </div>
-                ))}
+              <div style={{ paddingLeft: 20 }}>
+                <div style={{ fontSize: 10, fontFamily: 'Orbitron', color, letterSpacing: 1, marginBottom: 8 }}>BOWLING</div>
+                <StatRow label="Total Wickets" value={totalWickets} onChange={setTotalWickets} placeholder="0" />
+                <StatRow label="Best Bowling"  value={bestBowling}  onChange={setBestBowling}  placeholder="5/27" isText />
               </div>
             </div>
           </Section>
@@ -316,14 +324,16 @@ export function AddPlayer() {
                     {role.toUpperCase()}
                   </span>
                   <span style={{ fontSize: 9, fontFamily: 'Orbitron', fontWeight: 700, color: '#9ca3af', background: '#1f2937', padding: '2px 7px', borderRadius: 2 }}>
-                    {NATIONALITY_FLAGS[nationality]} {nationality.toUpperCase()}
+                    {NATIONALITY_FLAGS[nationality]} {nationality.toUpperCase().slice(0, 6)}
                   </span>
                 </div>
               </div>
-              {age && <div style={{ background: '#0d1117', border: '1px solid #1f2937', borderRadius: 7, padding: '5px 9px', textAlign: 'center' }}>
-                <div style={{ fontFamily: 'Orbitron', fontSize: 16, fontWeight: 900, color }}>{age}</div>
-                <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron' }}>AGE</div>
-              </div>}
+              {age && (
+                <div style={{ background: '#0d1117', border: '1px solid #1f2937', borderRadius: 7, padding: '5px 9px', textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'Orbitron', fontSize: 16, fontWeight: 900, color }}>{age}</div>
+                  <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron' }}>AGE</div>
+                </div>
+              )}
             </div>
             {jerseyNo && (
               <div style={{ marginTop: 10, textAlign: 'center' }}>
@@ -334,7 +344,6 @@ export function AddPlayer() {
             {baseTeam && <div style={{ marginTop: 4, fontSize: 11, color: '#4b5563' }}>🛡️ <span style={{ color: '#9ca3af' }}>{baseTeam}</span></div>}
           </div>
 
-          {/* Stats preview */}
           {(totalRuns || totalWickets) && (
             <div style={{ background: '#0d1117', border: '1px solid #1f2937', borderRadius: 10, padding: 14, marginBottom: 14 }}>
               <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#374151', letterSpacing: 2, marginBottom: 10 }}>STATS</div>
@@ -359,18 +368,17 @@ export function AddPlayer() {
             </div>
           )}
 
-          {/* Completion */}
           <div style={{ background: '#0d1117', border: '1px solid #1f2937', borderRadius: 10, padding: 14, marginBottom: 14 }}>
             <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#374151', letterSpacing: 2, marginBottom: 10 }}>COMPLETION</div>
             {[
-              { label: 'Name', done: !!name.trim() },
-              { label: 'Role', done: true },
-              { label: 'Nationality', done: !!nationality },
+              { label: 'Name',          done: !!name.trim() },
+              { label: 'Role',          done: true },
+              { label: 'Nationality',   done: !!nationality },
               { label: 'Batting Style', done: true },
               { label: 'Bowling Style', done: true },
-              { label: 'Age', done: !!age },
-              { label: 'Base Team', done: !!baseTeam },
-              { label: 'Stats Added', done: !!(totalRuns || totalWickets) },
+              { label: 'Age',           done: !!age },
+              { label: 'Base Team',     done: !!baseTeam },
+              { label: 'Stats Added',   done: !!(totalRuns || totalWickets) },
             ].map(({ label, done }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid #0d1117', fontSize: 12 }}>
                 <span style={{ color: done ? '#22c55e' : '#374151', fontSize: 14, width: 16, textAlign: 'center' }}>{done ? '✓' : '○'}</span>
@@ -379,16 +387,14 @@ export function AddPlayer() {
             ))}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button onClick={handleSave} disabled={saved} style={{
-              width: '100%', padding: '13px', borderRadius: 8, fontSize: 15,
-              background: saved ? '#22c55e' : `linear-gradient(135deg, ${color}cc, ${color})`,
-              border: 'none', color: '#000', cursor: 'pointer',
-              fontFamily: 'Orbitron', fontWeight: 900, letterSpacing: 1, transition: 'all 0.3s',
-            }}>
-              {saved ? '✓ PLAYER ADDED!' : `${roleIcon[role]} ADD PLAYER`}
-            </button>
-          </div>
+          <button onClick={handleSave} disabled={saved} style={{
+            width: '100%', padding: '13px', borderRadius: 8, fontSize: 15,
+            background: saved ? '#22c55e' : `linear-gradient(135deg, ${color}cc, ${color})`,
+            border: 'none', color: '#000', cursor: 'pointer',
+            fontFamily: 'Orbitron', fontWeight: 900, letterSpacing: 1, transition: 'all 0.3s',
+          }}>
+            {saved ? '✓ PLAYER ADDED!' : `${roleIcon[role]} ADD PLAYER`}
+          </button>
         </div>
       </div>
     </div>
@@ -406,7 +412,6 @@ function PlayerDetailModal({ player, onClose }: { player: Player; onClose: () =>
     <div style={{ position: 'fixed', inset: 0, background: '#000000cc', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: '#111827', border: `1px solid ${color}33`, borderRadius: 14, width: '100%', maxWidth: 540, maxHeight: '88vh', overflowY: 'auto', position: 'relative' }}>
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, transparent, ${color}, transparent)`, borderRadius: '14px 14px 0 0' }} />
-
         <div style={{ padding: '20px 22px 14px', borderBottom: '1px solid #1f2937' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ width: 52, height: 52, borderRadius: 12, background: `${color}22`, border: `2px solid ${color}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Bebas Neue', fontSize: 24, color }}>
@@ -428,22 +433,23 @@ function PlayerDetailModal({ player, onClose }: { player: Player; onClose: () =>
         </div>
 
         <div style={{ padding: '16px 22px' }}>
-          {/* Career Stats */}
           {player.stats && (
             <div style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: color, letterSpacing: 2, marginBottom: 10 }}>CAREER STATISTICS</div>
+              <div style={{ fontSize: 9, fontFamily: 'Orbitron', color, letterSpacing: 2, marginBottom: 10 }}>CAREER STATISTICS</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {[
-                  { label: 'MATCHES', val: player.stats.totalMatches },
-                  { label: 'RUNS', val: player.stats.totalRuns },
-                  { label: 'WICKETS', val: player.stats.totalWickets },
-                  { label: 'HIGH SCORE', val: player.stats.highScore },
-                  { label: 'BEST BOWL', val: player.stats.bestBowling },
-                  { label: 'BALLS', val: player.stats.totalBalls },
-                  ...(player.stats.centuries !== undefined ? [{ label: 'CENTURIES', val: player.stats.centuries }] : []),
-                  ...(player.stats.halfCenturies !== undefined ? [{ label: '50s', val: player.stats.halfCenturies }] : []),
-                  ...(player.stats.strikeRate !== undefined ? [{ label: 'STRIKE RATE', val: player.stats.strikeRate }] : []),
-                ].map(({ label, val }) => (
+                {(
+                  [
+                    { label: 'MATCHES',    val: player.stats.totalMatches },
+                    { label: 'RUNS',       val: player.stats.totalRuns },
+                    { label: 'WICKETS',    val: player.stats.totalWickets },
+                    { label: 'HIGH SCORE', val: player.stats.highScore },
+                    { label: 'BEST BOWL',  val: player.stats.bestBowling },
+                    { label: 'BALLS',      val: player.stats.totalBalls },
+                    ...(player.stats.centuries     !== undefined ? [{ label: 'CENTURIES', val: player.stats.centuries }]     : []),
+                    ...(player.stats.halfCenturies !== undefined ? [{ label: '50s',       val: player.stats.halfCenturies }] : []),
+                    ...(player.stats.strikeRate    !== undefined ? [{ label: 'S/R',       val: player.stats.strikeRate }]    : []),
+                  ] as Array<{ label: string; val: string | number }>
+                ).map(({ label, val }) => (
                   <div key={label} style={{ background: '#0d1117', borderRadius: 7, padding: '8px', textAlign: 'center' }}>
                     <div style={{ fontFamily: 'Orbitron', fontSize: 16, fontWeight: 900, color }}>{val}</div>
                     <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1, marginTop: 2 }}>{label}</div>
@@ -453,7 +459,6 @@ function PlayerDetailModal({ player, onClose }: { player: Player; onClose: () =>
             </div>
           )}
 
-          {/* Tournament History */}
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#4b5563', letterSpacing: 2, marginBottom: 8 }}>🏆 TOURNAMENTS ({history.tournaments.length})</div>
             {history.tournaments.length === 0 ? (
@@ -466,7 +471,6 @@ function PlayerDetailModal({ player, onClose }: { player: Player; onClose: () =>
             ))}
           </div>
 
-          {/* Teams */}
           <div>
             <div style={{ fontSize: 9, fontFamily: 'Orbitron', color: '#4b5563', letterSpacing: 2, marginBottom: 8 }}>🛡️ TEAMS PLAYED FOR ({history.teams.length})</div>
             {history.teams.length === 0 ? (
@@ -512,7 +516,6 @@ export default function Players() {
 
   return (
     <div style={{ padding: 24 }}>
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontFamily: 'Bebas Neue', fontSize: 36, letterSpacing: 4, color: '#f9fafb', margin: 0 }}>PLAYERS</h1>
@@ -526,7 +529,6 @@ export default function Players() {
         }}>+ ADD PLAYER</button>
       </div>
 
-      {/* View mode toggle */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
         <button onClick={() => { setViewMode('role'); setFilterNationality('all'); }} style={{
           padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontFamily: 'Orbitron', fontWeight: 700,
@@ -542,7 +544,6 @@ export default function Players() {
         }}>🌍 BY NATIONALITY</button>
       </div>
 
-      {/* ROLE VIEW */}
       {viewMode === 'role' && (
         <>
           <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
@@ -575,68 +576,51 @@ export default function Players() {
         </>
       )}
 
-      {/* NATIONALITY VIEW */}
       {viewMode === 'nationality' && (
-        <>
-          {/* Nationality tab strip */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8, marginBottom: 12 }}>
-              <div
-                onClick={() => setFilterNationality('all')}
-                style={{
-                  background: filterNationality === 'all' ? '#22c55e15' : '#111827',
-                  border: `1px solid ${filterNationality === 'all' ? '#22c55e' : '#1f2937'}`,
-                  borderRadius: 8, padding: '10px 8px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s',
-                }}
-              >
-                <div style={{ fontSize: 20, marginBottom: 2 }}>🌐</div>
-                <div style={{ fontFamily: 'Orbitron', fontSize: 16, fontWeight: 900, color: filterNationality === 'all' ? '#22c55e' : '#f9fafb' }}>{players.length}</div>
-                <div style={{ fontSize: 9, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>ALL</div>
-              </div>
-              {nationalities.map(n => (
-                <div
-                  key={n}
-                  onClick={() => setFilterNationality(n)}
-                  style={{
-                    background: filterNationality === n ? '#3b82f615' : '#111827',
-                    border: `1px solid ${filterNationality === n ? '#3b82f6' : '#1f2937'}`,
-                    borderRadius: 8, padding: '10px 8px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s',
-                    boxShadow: filterNationality === n ? '0 0 16px #3b82f622' : 'none',
-                  }}
-                >
-                  <div style={{ fontSize: 20, marginBottom: 2 }}>{NATIONALITY_FLAGS[n] || '🌍'}</div>
-                  <div style={{ fontFamily: 'Orbitron', fontSize: 16, fontWeight: 900, color: filterNationality === n ? '#3b82f6' : '#f9fafb' }}>{natCounts[n]}</div>
-                  <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>{n.slice(0, 6).toUpperCase()}</div>
-                </div>
-              ))}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8, marginBottom: 12 }}>
+            <div onClick={() => setFilterNationality('all')} style={{
+              background: filterNationality === 'all' ? '#22c55e15' : '#111827',
+              border: `1px solid ${filterNationality === 'all' ? '#22c55e' : '#1f2937'}`,
+              borderRadius: 8, padding: '10px 8px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s',
+            }}>
+              <div style={{ fontSize: 20, marginBottom: 2 }}>🌐</div>
+              <div style={{ fontFamily: 'Orbitron', fontSize: 16, fontWeight: 900, color: filterNationality === 'all' ? '#22c55e' : '#f9fafb' }}>{players.length}</div>
+              <div style={{ fontSize: 9, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>ALL</div>
             </div>
-
-            {/* If all nationalities view: group by country */}
-            {filterNationality === 'all' && !search && (
-              <div style={{ marginBottom: 8 }}>
-                {nationalities.map(n => {
-                  const natPlayers = players.filter(p => p.nationality === n);
-                  if (natPlayers.length === 0) return null;
-                  return (
-                    <div key={n} style={{ marginBottom: 24 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                        <div style={{ height: 2, width: 20, background: '#3b82f6', borderRadius: 1 }} />
-                        <span style={{ fontSize: 10, fontFamily: 'Orbitron', fontWeight: 700, color: '#3b82f6', letterSpacing: 2 }}>
-                          {NATIONALITY_FLAGS[n]} {n.toUpperCase()}
-                        </span>
-                        <span style={{ fontSize: 10, color: '#4b5563', fontFamily: 'Orbitron' }}>({natPlayers.length})</span>
-                        <div style={{ flex: 1, height: 1, background: '#1f2937' }} />
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
-                        {natPlayers.map(p => <PlayerCard key={p.id} player={p} onClick={() => setSelectedPlayer(p)} />)}
-                      </div>
-                    </div>
-                  );
-                })}
-                {selectedPlayer && <PlayerDetailModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
+            {nationalities.map(n => (
+              <div key={n} onClick={() => setFilterNationality(n)} style={{
+                background: filterNationality === n ? '#3b82f615' : '#111827',
+                border: `1px solid ${filterNationality === n ? '#3b82f6' : '#1f2937'}`,
+                borderRadius: 8, padding: '10px 8px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s',
+                boxShadow: filterNationality === n ? '0 0 16px #3b82f622' : 'none',
+              }}>
+                <div style={{ fontSize: 20, marginBottom: 2 }}>{NATIONALITY_FLAGS[n] || '🌍'}</div>
+                <div style={{ fontFamily: 'Orbitron', fontSize: 16, fontWeight: 900, color: filterNationality === n ? '#3b82f6' : '#f9fafb' }}>{natCounts[n]}</div>
+                <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>{n.slice(0, 6).toUpperCase()}</div>
               </div>
-            )}
+            ))}
           </div>
+
+          {filterNationality === 'all' && !search && nationalities.map(n => {
+            const natPlayers = players.filter(p => p.nationality === n);
+            if (natPlayers.length === 0) return null;
+            return (
+              <div key={n} style={{ marginBottom: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ height: 2, width: 20, background: '#3b82f6', borderRadius: 1 }} />
+                  <span style={{ fontSize: 10, fontFamily: 'Orbitron', fontWeight: 700, color: '#3b82f6', letterSpacing: 2 }}>
+                    {NATIONALITY_FLAGS[n]} {n.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: 10, color: '#4b5563', fontFamily: 'Orbitron' }}>({natPlayers.length})</span>
+                  <div style={{ flex: 1, height: 1, background: '#1f2937' }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+                  {natPlayers.map(p => <PlayerCard key={p.id} player={p} onClick={() => setSelectedPlayer(p)} />)}
+                </div>
+              </div>
+            );
+          })}
 
           {filterNationality !== 'all' && (
             <div style={{ marginBottom: 16 }}>
@@ -646,24 +630,21 @@ export default function Players() {
               />
             </div>
           )}
-        </>
+        </div>
       )}
 
-      {/* Grid (for role view and filtered nationality view) */}
       {(viewMode === 'role' || (viewMode === 'nationality' && (filterNationality !== 'all' || search))) && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
           {filtered.map(p => <PlayerCard key={p.id} player={p} onClick={() => setSelectedPlayer(p)} />)}
         </div>
       )}
 
-      {selectedPlayer && (viewMode === 'role' || (viewMode === 'nationality' && filterNationality !== 'all')) && (
-        <PlayerDetailModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
-      )}
+      {selectedPlayer && <PlayerDetailModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
     </div>
   );
 }
 
-/* ─── Reusable PlayerCard ─── */
+/* ─── PlayerCard ─── */
 function PlayerCard({ player: p, onClick }: { player: Player; onClick: () => void }) {
   const color = roleColors[p.role];
   const hasHistory = (p.tournamentsPlayed?.length || 0) + (p.matchesPlayed?.length || 0) > 0;
@@ -686,16 +667,14 @@ function PlayerCard({ player: p, onClick }: { player: Player; onClick: () => voi
           <div style={{ fontSize: 11, color: '#4b5563', marginTop: 1, display: 'flex', gap: 4, alignItems: 'center' }}>
             <span>{flag}</span>
             <span>{p.nationality}</span>
-            {p.jerseyNo && <span style={{ color: color, marginLeft: 4 }}>#{p.jerseyNo}</span>}
+            {p.jerseyNo && <span style={{ color, marginLeft: 4 }}>#{p.jerseyNo}</span>}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
           <span style={{ fontSize: 8, fontFamily: 'Orbitron', fontWeight: 700, color, background: `${color}18`, border: `1px solid ${color}33`, padding: '2px 5px', borderRadius: 2 }}>
             {p.role.toUpperCase().slice(0, 2)}
           </span>
-          {hasHistory && (
-            <span style={{ fontSize: 8, color: '#22c55e', fontFamily: 'Orbitron', background: '#22c55e11', padding: '1px 5px', borderRadius: 2 }}>HISTORY</span>
-          )}
+          {hasHistory && <span style={{ fontSize: 8, color: '#22c55e', fontFamily: 'Orbitron', background: '#22c55e11', padding: '1px 5px', borderRadius: 2 }}>HISTORY</span>}
         </div>
       </div>
       <div style={{ marginTop: 10, display: 'flex', gap: 8, fontSize: 11 }}>
