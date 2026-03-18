@@ -37,7 +37,7 @@ function TournamentCard({ tournament, onEdit, onDelete, onView, matchCount }: {
     }, 60);
     return () => clearTimeout(t);
   }, []);
-
+  
   return (
     <div ref={ref} style={{
       background: 'linear-gradient(135deg, #0d1520, #111827)',

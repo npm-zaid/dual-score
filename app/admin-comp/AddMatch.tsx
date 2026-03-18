@@ -44,7 +44,13 @@ function StepBar({ step, total }: { step: number; total: number }) {
 }
 
 export default function AddMatch() {
-  const { teams, players, tournaments, addMatch, updateMatch, editingMatch, setEditingMatch, setActivePage, getTournamentById, getTeamsByLevel } = useApp();
+  const {
+    teams, players, tournaments, addMatch, updateMatch,
+    editingMatch, setEditingMatch, setActivePage,
+    getTournamentById, getTeamsByLevel,
+    editingTournament,  // ← pre-select tournament when coming from TournamentDetail
+  } = useApp();
+
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(defaultForm);
   const [selectedPlayersA, setSelectedPlayersA] = useState<string[]>([]);
@@ -76,20 +82,22 @@ export default function AddMatch() {
       setSelectedPlayersB(editingMatch.teamB.players.map(p => p.id));
       setStep(1);
     } else {
-      setForm(defaultForm);
+      // Pre-select tournament if coming from TournamentDetail via "+ Add Match"
+      setForm({
+        ...defaultForm,
+        tournamentId: editingTournament?.id || '',
+      });
       setSelectedPlayersA([]);
       setSelectedPlayersB([]);
       setStep(1);
     }
-  }, [editingMatch]);
+  }, [editingMatch, editingTournament]);
 
   const update = (field: keyof FormState, val: string) =>
     setForm(prev => ({ ...prev, [field]: val }));
 
-  // Get tournament for context
   const selectedTournament = form.tournamentId ? getTournamentById(form.tournamentId) : null;
 
-  // Teams filtered by tournament (if selected) or all teams
   const availableTeams = selectedTournament
     ? teams.filter(t => selectedTournament.teams.includes(t.id))
     : teams;
@@ -97,7 +105,6 @@ export default function AddMatch() {
   const teamA = teams.find(t => t.id === form.teamAId);
   const teamB = teams.find(t => t.id === form.teamBId);
 
-  // Players filtered from selected teams (or all players)
   const teamAPlayers = teamA ? players.filter(p => teamA.players.some(tp => tp.id === p.id)) : players;
   const teamBPlayers = teamB ? players.filter(p => teamB.players.some(tp => tp.id === p.id)) : players;
 
@@ -113,7 +120,6 @@ export default function AddMatch() {
     setter(prev => prev.includes(pid) ? prev.filter(p => p !== pid) : [...prev, pid]);
   };
 
-  // 11-player limit
   const maxReached = (side: 'A' | 'B') => {
     const selected = side === 'A' ? selectedPlayersA : selectedPlayersB;
     return selected.length >= 11;
@@ -128,7 +134,6 @@ export default function AddMatch() {
   const handleSave = () => {
     const selectedA = players.filter(p => selectedPlayersA.includes(p.id));
     const selectedB = players.filter(p => selectedPlayersB.includes(p.id));
-
     const tournament = selectedTournament;
 
     const matchData: Match = {
@@ -159,7 +164,12 @@ export default function AddMatch() {
     setTimeout(() => {
       setSaved(false);
       setEditingMatch(null);
-      setActivePage('matches');
+      // If came from a tournament, go back to that tournament's detail page
+      if (form.tournamentId && editingTournament?.id === form.tournamentId) {
+        setActivePage('tournament-detail');
+      } else {
+        setActivePage('matches');
+      }
     }, 1500);
   };
 
@@ -186,19 +196,36 @@ export default function AddMatch() {
             {isEditing ? 'EDIT MATCH' : 'CREATE MATCH'}
           </h1>
           <div style={{ color: '#4b5563', fontSize: 13, marginTop: 2, fontFamily: 'Rajdhani' }}>
-            {isEditing ? `Editing: ${editingMatch?.title}` : 'Fill in all steps to add a new match'}
+            {isEditing
+              ? `Editing: ${editingMatch?.title}`
+              : selectedTournament
+                ? `Adding match to: ${selectedTournament.name}`
+                : 'Fill in all steps to add a new match'}
           </div>
         </div>
-        {isEditing && (
-          <button
-            onClick={() => { setEditingMatch(null); setForm(defaultForm); }}
-            style={{
-              marginLeft: 'auto', padding: '8px 16px', borderRadius: 6, fontSize: 12,
-              background: 'transparent', border: '1px solid #374151',
-              color: '#6b7280', cursor: 'pointer', fontFamily: 'Orbitron', letterSpacing: 1,
-            }}
-          >✕ CANCEL</button>
-        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          {/* Back to tournament detail if applicable */}
+          {(editingTournament || selectedTournament) && (
+            <button
+              onClick={() => setActivePage('tournament-detail')}
+              style={{
+                padding: '8px 14px', borderRadius: 6, fontSize: 11,
+                background: 'transparent', border: '1px solid #374151',
+                color: '#6b7280', cursor: 'pointer', fontFamily: 'Orbitron', letterSpacing: 1,
+              }}
+            >← BACK TO TOURNAMENT</button>
+          )}
+          {isEditing && (
+            <button
+              onClick={() => { setEditingMatch(null); setForm({ ...defaultForm, tournamentId: editingTournament?.id || '' }); }}
+              style={{
+                padding: '8px 16px', borderRadius: 6, fontSize: 12,
+                background: 'transparent', border: '1px solid #374151',
+                color: '#6b7280', cursor: 'pointer', fontFamily: 'Orbitron', letterSpacing: 1,
+              }}
+            >✕ CANCEL</button>
+          )}
+        </div>
       </div>
 
       <div style={{
@@ -235,7 +262,6 @@ export default function AddMatch() {
                 value={form.tournamentId}
                 onChange={e => {
                   update('tournamentId', e.target.value);
-                  // Reset teams when tournament changes
                   update('teamAId', '');
                   update('teamBId', '');
                 }}
@@ -333,7 +359,6 @@ export default function AddMatch() {
         {/* STEP 2: Teams & Players */}
         {step === 2 && (
           <div>
-            {/* Info banner */}
             {selectedTournament && (
               <div style={{
                 background: '#22c55e0a', border: '1px solid #22c55e22', borderRadius: 8,
@@ -399,9 +424,7 @@ export default function AddMatch() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <div>
                     <label style={{ ...lblSt, display: 'inline' }}>SELECT PLAYING XI</label>
-                    <span style={{ fontSize: 10, color: '#4b5563', marginLeft: 8, fontFamily: 'Rajdhani' }}>
-                      (max 11 per team)
-                    </span>
+                    <span style={{ fontSize: 10, color: '#4b5563', marginLeft: 8, fontFamily: 'Rajdhani' }}>(max 11 per team)</span>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {(['A', 'B'] as const).map(side => {
@@ -433,7 +456,6 @@ export default function AddMatch() {
                   onChange={e => setPlayerSearch(e.target.value)}
                 />
 
-                {/* 11-player warning */}
                 {maxReached(activeTeamSelect) && (
                   <div style={{
                     background: '#22c55e0a', border: '1px solid #22c55e33', borderRadius: 6,
@@ -449,15 +471,12 @@ export default function AddMatch() {
                       {(activeTeamSelect === 'A' ? teamA : teamB) ? 'No players in this team' : 'Select a team first'}
                     </div>
                   ) : filteredPlayers.map(p => {
-                    const selectedA = selectedPlayersA.includes(p.id);
-                    const selectedB = selectedPlayersB.includes(p.id);
-                    const isSelected = activeTeamSelect === 'A' ? selectedA : selectedB;
+                    const isSelected = activeTeamSelect === 'A' ? selectedPlayersA.includes(p.id) : selectedPlayersB.includes(p.id);
                     const isDisabled = !isSelected && maxReached(activeTeamSelect);
                     const roleColors: Record<string, string> = {
                       Batsman: '#3b82f6', Bowler: '#ef4444', 'All-rounder': '#22c55e', 'Wicket-keeper': '#eab308',
                     };
                     const rc = roleColors[p.role];
-
                     return (
                       <div
                         key={p.id}
@@ -520,9 +539,7 @@ export default function AddMatch() {
 
             {/* Summary */}
             <div style={{ background: '#0d1117', border: '1px solid #22c55e22', borderRadius: 8, padding: 18 }}>
-              <div style={{ fontFamily: 'Orbitron', fontSize: 10, color: '#22c55e', marginBottom: 12, letterSpacing: 2 }}>
-                MATCH SUMMARY
-              </div>
+              <div style={{ fontFamily: 'Orbitron', fontSize: 10, color: '#22c55e', marginBottom: 12, letterSpacing: 2 }}>MATCH SUMMARY</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13 }}>
                 {[
                   ['Title', form.title || (teamA && teamB ? `${teamA.shortName} vs ${teamB.shortName}` : '—')],

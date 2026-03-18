@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp, Player } from './AppContext';
+import PlayerProfile  from './Playerprofile';
 
 /* ─── Constants ─── */
 const ROLES = ['Batsman', 'Bowler', 'All-rounder', 'Wicket-keeper'] as const;
@@ -52,7 +53,7 @@ function Section({ title, icon, children, delay = 0 }: {
   );
 }
 
-/* ─── FIX: typed StatRow component — avoids mixed-array tuple inference error ─── */
+/* ─── FIX: typed StatRow component ─── */
 interface StatRowProps {
   label: string;
   value: string;
@@ -282,7 +283,7 @@ export function AddPlayer() {
             </div>
           </Section>
 
-          {/* ── STATS: StatRow components instead of mixed-array .map() ── */}
+          {/* STATS */}
           <Section title="CAREER STATS (OPTIONAL)" icon="📊" delay={240}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
               <div style={{ paddingRight: 20, borderRight: '1px solid #1f2937' }}>
@@ -401,7 +402,7 @@ export function AddPlayer() {
   );
 }
 
-/* ─── PlayerDetailModal ─── */
+/* ─── PlayerDetailModal (DEPRECATED - replaced by PlayerProfile) ─── */
 function PlayerDetailModal({ player, onClose }: { player: Player; onClose: () => void }) {
   const { getPlayerHistory } = useApp();
   const history = getPlayerHistory(player.id);
@@ -498,7 +499,7 @@ export default function Players() {
   const [filterRole, setFilterRole] = useState<Player['role'] | 'all'>('all');
   const [filterNationality, setFilterNationality] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [selectedPlayerProfile, setSelectedPlayerProfile] = useState<string | null>(null);
 
   const nationalities = getAllNationalities();
 
@@ -616,7 +617,7 @@ export default function Players() {
                   <div style={{ flex: 1, height: 1, background: '#1f2937' }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
-                  {natPlayers.map(p => <PlayerCard key={p.id} player={p} onClick={() => setSelectedPlayer(p)} />)}
+                  {natPlayers.map(p => <PlayerCard key={p.id} player={p} onViewProfile={() => setSelectedPlayerProfile(p.id)} />)}
                 </div>
               </div>
             );
@@ -635,24 +636,26 @@ export default function Players() {
 
       {(viewMode === 'role' || (viewMode === 'nationality' && (filterNationality !== 'all' || search))) && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
-          {filtered.map(p => <PlayerCard key={p.id} player={p} onClick={() => setSelectedPlayer(p)} />)}
+          {filtered.map(p => <PlayerCard key={p.id} player={p} onViewProfile={() => setSelectedPlayerProfile(p.id)} />)}
         </div>
       )}
 
-      {selectedPlayer && <PlayerDetailModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
+      {selectedPlayerProfile && (
+        <PlayerProfile playerId={selectedPlayerProfile} onClose={() => setSelectedPlayerProfile(null)} />
+      )}
     </div>
   );
 }
 
 /* ─── PlayerCard ─── */
-function PlayerCard({ player: p, onClick }: { player: Player; onClick: () => void }) {
+function PlayerCard({ player: p, onViewProfile }: { player: Player; onViewProfile: () => void }) {
   const color = roleColors[p.role];
   const hasHistory = (p.tournamentsPlayed?.length || 0) + (p.matchesPlayed?.length || 0) > 0;
   const flag = NATIONALITY_FLAGS[p.nationality] || '🌍';
 
   return (
     <div
-      onClick={onClick}
+      onClick={onViewProfile}
       style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 8, padding: '14px 16px', position: 'relative', overflow: 'hidden', cursor: 'pointer', transition: 'all 0.2s' }}
       onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${color}44`; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-1px)'; }}
       onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#1f2937'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)'; }}

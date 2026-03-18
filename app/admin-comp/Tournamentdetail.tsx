@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import { useApp } from './AppContext';
+import { useApp, Match } from './AppContext';
 
 const LEVEL_META: Record<string, { icon: string; color: string }> = {
   international: { icon: '🌍', color: '#f97316' },
@@ -13,7 +13,10 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function TournamentDetail() {
-  const { editingTournament, teams, getMatchesByTournament, setActivePage, setEditingMatch } = useApp();
+  const {
+    editingTournament, teams, getMatchesByTournament,
+    setActivePage, setEditingMatch, setEditingTournament, deleteMatch,
+  } = useApp();
   const [tab, setTab] = useState<'overview' | 'teams' | 'matches' | 'timeline'>('overview');
 
   if (!editingTournament) {
@@ -36,6 +39,15 @@ export default function TournamentDetail() {
     live: tournamentMatches.filter(m => m.status === 'live'),
     upcoming: tournamentMatches.filter(m => m.status === 'upcoming'),
     completed: tournamentMatches.filter(m => m.status === 'completed'),
+  };
+
+  // Create a new match pre-linked to this tournament
+  const handleAddMatch = () => {
+    setEditingMatch(null);
+    // Store tournament context so AddMatch pre-selects it
+    // We navigate to add-match; AddMatch will show tournament pre-selected
+    // We pass the tournament via editingTournament which stays set
+    setActivePage('add-match');
   };
 
   return (
@@ -89,14 +101,26 @@ export default function TournamentDetail() {
               {t.prizePool && <span style={{ color: '#22c55e', fontWeight: 700 }}>💰 {t.prizePool}</span>}
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'center', flexShrink: 0 }}>
-            <div style={{ background: `${lm.color}15`, border: `1px solid ${lm.color}33`, borderRadius: 8, padding: '10px 18px' }}>
-              <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: lm.color }}>{tournamentTeams.length}</div>
-              <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>TEAMS</div>
-            </div>
-            <div style={{ background: '#1f2937', borderRadius: 8, padding: '10px 18px' }}>
-              <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: '#f9fafb' }}>{tournamentMatches.length}</div>
-              <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>MATCHES</div>
+
+          {/* Stats + Edit button */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
+            <button
+              onClick={() => { setActivePage('add-tournament'); }}
+              style={{
+                padding: '7px 14px', borderRadius: 6, cursor: 'pointer',
+                background: `${lm.color}15`, border: `1px solid ${lm.color}33`,
+                color: lm.color, fontFamily: 'Orbitron', fontSize: 9, fontWeight: 700, letterSpacing: 1,
+              }}
+            >✏️ EDIT TOURNAMENT</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ background: `${lm.color}15`, border: `1px solid ${lm.color}33`, borderRadius: 8, padding: '10px 18px', textAlign: 'center' }}>
+                <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: lm.color }}>{tournamentTeams.length}</div>
+                <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>TEAMS</div>
+              </div>
+              <div style={{ background: '#1f2937', borderRadius: 8, padding: '10px 18px', textAlign: 'center' }}>
+                <div style={{ fontFamily: 'Orbitron', fontSize: 28, fontWeight: 900, color: '#f9fafb' }}>{tournamentMatches.length}</div>
+                <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>MATCHES</div>
+              </div>
             </div>
           </div>
         </div>
@@ -119,7 +143,6 @@ export default function TournamentDetail() {
       {/* OVERVIEW */}
       {tab === 'overview' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {/* Match status overview */}
           {(['live', 'upcoming', 'completed'] as const).map(status => (
             <div key={status} style={{ background: '#111827', border: `1px solid ${STATUS_COLORS[status]}22`, borderRadius: 10, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -192,7 +215,10 @@ export default function TournamentDetail() {
                   </div>
                   <div style={{ background: '#0d1117', borderRadius: 6, padding: '6px 10px', textAlign: 'center', flex: 1 }}>
                     <div style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: 18, color: '#22c55e' }}>
-                      {tournamentMatches.filter(m => m.result?.toLowerCase().includes(team.name.toLowerCase()) || m.result?.toLowerCase().includes(team.shortName.toLowerCase())).length}
+                      {tournamentMatches.filter(m =>
+                        m.result?.toLowerCase().includes(team.name.toLowerCase()) ||
+                        m.result?.toLowerCase().includes(team.shortName.toLowerCase())
+                      ).length}
                     </div>
                     <div style={{ fontSize: 8, color: '#4b5563', fontFamily: 'Orbitron', letterSpacing: 1 }}>WINS</div>
                   </div>
@@ -206,56 +232,170 @@ export default function TournamentDetail() {
       {/* MATCHES */}
       {tab === 'matches' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: '#4b5563', fontFamily: 'Rajdhani' }}>
-              {tournamentMatches.length} matches in this tournament
+          {/* Header with Add Match button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#4b5563', fontFamily: 'Rajdhani' }}>
+                {tournamentMatches.length} match{tournamentMatches.length !== 1 ? 'es' : ''} in this tournament
+              </div>
+              {tournamentMatches.length > 0 && (
+                <div style={{ fontSize: 11, color: '#374151', fontFamily: 'Rajdhani', marginTop: 2 }}>
+                  {matchesByStatus.completed.length} completed · {matchesByStatus.live.length} live · {matchesByStatus.upcoming.length} upcoming
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: 11, color: '#6b7280', fontFamily: 'Rajdhani' }}>
-              Matches are created via the Matches section
-            </div>
+            <button
+              onClick={handleAddMatch}
+              style={{
+                padding: '9px 20px', borderRadius: 7, cursor: 'pointer',
+                background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+                border: 'none', color: '#000',
+                fontFamily: 'Orbitron', fontWeight: 900, fontSize: 11, letterSpacing: 1,
+                boxShadow: '0 0 16px #22c55e22',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              + ADD MATCH
+            </button>
           </div>
+
           {tournamentMatches.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 0', color: '#374151' }}>
-              <div style={{ fontSize: 40, marginBottom: 10 }}>🏏</div>
-              <div style={{ fontFamily: 'Bebas Neue', fontSize: 18, letterSpacing: 2 }}>NO MATCHES YET</div>
-              <div style={{ fontFamily: 'Rajdhani', fontSize: 13, marginTop: 4, color: '#4b5563' }}>
-                Add matches from the Matches page and select this tournament
+            /* Empty state with prominent CTA */
+            <div style={{
+              border: '2px dashed #1f2937', borderRadius: 12,
+              padding: '60px 24px', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🏏</div>
+              <div style={{ fontFamily: 'Bebas Neue', fontSize: 22, letterSpacing: 3, color: '#374151', marginBottom: 8 }}>
+                NO MATCHES SCHEDULED YET
+              </div>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 13, color: '#4b5563', marginBottom: 24 }}>
+                Add matches to this tournament — they'll appear here and in All Matches
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                <button
+                  onClick={() => { setActivePage('add-tournament'); }}
+                  style={{
+                    padding: '10px 20px', borderRadius: 7, cursor: 'pointer',
+                    background: `${lm.color}15`, border: `1px solid ${lm.color}33`,
+                    color: lm.color, fontFamily: 'Orbitron', fontSize: 10, fontWeight: 700,
+                  }}
+                >📅 EDIT SCHEDULE IN TOURNAMENT</button>
+                <button
+                  onClick={handleAddMatch}
+                  style={{
+                    padding: '10px 22px', borderRadius: 7, cursor: 'pointer',
+                    background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+                    border: 'none', color: '#000',
+                    fontFamily: 'Orbitron', fontWeight: 900, fontSize: 11, letterSpacing: 1,
+                  }}
+                >+ ADD MATCH NOW</button>
               </div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {tournamentMatches.map(m => {
-                const sc = STATUS_COLORS[m.status];
-                return (
-                  <div key={m.id} style={{
-                    background: '#111827', border: `1px solid ${sc}22`, borderRadius: 10, padding: '14px 16px',
-                    cursor: 'pointer', transition: 'border-color 0.2s',
-                  }}
-                  onClick={() => { setEditingMatch(m); setActivePage('add-match'); }}
-                  onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = `${sc}55`}
-                  onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = `${sc}22`}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontFamily: 'Bebas Neue', fontSize: 18, letterSpacing: 2, color: '#f9fafb' }}>
-                          {m.teamA.shortName} <span style={{ color: '#22c55e' }}>vs</span> {m.teamB.shortName}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#4b5563', fontFamily: 'Rajdhani', marginTop: 2 }}>
-                          {m.date} · {m.time} · {m.venue.split(',')[0]}
+              {tournamentMatches
+                .sort((a, b) => a.date.localeCompare(b.date))
+                .map(m => {
+                  const sc = STATUS_COLORS[m.status] || '#6b7280';
+                  return (
+                    <div key={m.id} style={{
+                      background: '#111827', border: `1px solid ${sc}22`, borderRadius: 10,
+                      overflow: 'hidden', transition: 'border-color 0.2s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = `${sc}55`}
+                    onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = `${sc}22`}
+                    >
+                      <div style={{ height: 2, background: `linear-gradient(90deg, ${sc}, ${sc}22, transparent)` }} />
+                      <div style={{ padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1 }}>
+                            {/* Match title */}
+                            <div style={{ fontFamily: 'Bebas Neue', fontSize: 18, letterSpacing: 2, color: '#f9fafb', lineHeight: 1, marginBottom: 4 }}>
+                              {m.title || `${m.teamA.shortName} vs ${m.teamB.shortName}`}
+                            </div>
+                            {/* Teams + score */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                              <span style={{ fontFamily: 'Orbitron', fontSize: 13, fontWeight: 900, color: m.teamA.color || '#f9fafb' }}>
+                                {m.teamA.shortName}
+                              </span>
+                              {m.scoreA && (
+                                <span style={{ fontFamily: 'Orbitron', fontSize: 12, color: '#22c55e' }}>{m.scoreA}</span>
+                              )}
+                              <span style={{ color: '#4b5563', fontSize: 11 }}>vs</span>
+                              {m.scoreB && (
+                                <span style={{ fontFamily: 'Orbitron', fontSize: 12, color: '#22c55e' }}>{m.scoreB}</span>
+                              )}
+                              <span style={{ fontFamily: 'Orbitron', fontSize: 13, fontWeight: 900, color: m.teamB.color || '#f9fafb' }}>
+                                {m.teamB.shortName}
+                              </span>
+                            </div>
+                            {/* Meta */}
+                            <div style={{ fontSize: 11, color: '#4b5563', fontFamily: 'Rajdhani' }}>
+                              📅 {m.date || '—'}{m.time ? ` · ${m.time}` : ''}{m.venue ? ` · ${m.venue.split(',')[0]}` : ''}
+                            </div>
+                            {m.result && (
+                              <div style={{ marginTop: 6, fontSize: 12, color: '#22c55e', fontFamily: 'Rajdhani', fontWeight: 700 }}>
+                                🏆 {m.result}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right: status + actions */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
+                            <span style={{
+                              fontSize: 9, fontFamily: 'Orbitron', fontWeight: 700,
+                              background: `${sc}18`, color: sc,
+                              border: `1px solid ${sc}33`, padding: '2px 8px', borderRadius: 3, letterSpacing: 1,
+                            }}>
+                              {m.status === 'live' && '● '}{m.status.toUpperCase()}
+                            </span>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => { setEditingMatch(m); setActivePage('add-match'); }}
+                                style={{
+                                  padding: '5px 12px', borderRadius: 5, cursor: 'pointer',
+                                  background: '#22c55e15', border: '1px solid #22c55e33',
+                                  color: '#22c55e', fontFamily: 'Orbitron', fontSize: 9, fontWeight: 700,
+                                }}
+                              >✏️ EDIT</button>
+                              <button
+                                onClick={() => deleteMatch(m.id)}
+                                style={{
+                                  padding: '5px 10px', borderRadius: 5, cursor: 'pointer',
+                                  background: '#ef444415', border: '1px solid #ef444430',
+                                  color: '#ef4444', fontFamily: 'Orbitron', fontSize: 9, fontWeight: 700,
+                                }}
+                              >✕</button>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <span style={{ fontSize: 9, fontFamily: 'Orbitron', fontWeight: 700, background: `${sc}18`, color: sc, border: `1px solid ${sc}33`, padding: '2px 8px', borderRadius: 3, letterSpacing: 1 }}>
-                        {m.status === 'live' && '● '}{m.status.toUpperCase()}
-                      </span>
                     </div>
-                    {m.result && (
-                      <div style={{ marginTop: 8, fontSize: 12, color: '#22c55e', fontFamily: 'Rajdhani', fontWeight: 700 }}>
-                        🏆 {m.result}
-                      </div>
-                    )}
-                  </div>
-                );
+                  );
               })}
+
+              {/* Bottom add button */}
+              <button
+                onClick={handleAddMatch}
+                style={{
+                  padding: '12px', borderRadius: 8, cursor: 'pointer',
+                  background: 'transparent',
+                  border: `2px dashed ${lm.color}33`,
+                  color: lm.color, fontFamily: 'Orbitron', fontSize: 10, fontWeight: 700,
+                  letterSpacing: 1, transition: 'all 0.2s', marginTop: 4,
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLButtonElement).style.background = `${lm.color}08`;
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = `${lm.color}66`;
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = `${lm.color}33`;
+                }}
+              >
+                + ADD ANOTHER MATCH TO THIS TOURNAMENT
+              </button>
             </div>
           )}
         </div>
@@ -272,10 +412,10 @@ export default function TournamentDetail() {
                 .sort((a, b) => a.date.localeCompare(b.date))
                 .map(m => ({
                   date: m.date,
-                  label: `${m.teamA.shortName} vs ${m.teamB.shortName}`,
-                  color: STATUS_COLORS[m.status],
+                  label: m.title || `${m.teamA.shortName} vs ${m.teamB.shortName}`,
+                  color: STATUS_COLORS[m.status] || '#6b7280',
                   icon: m.status === 'live' ? '🔴' : m.status === 'completed' ? '✅' : '📅',
-                  desc: m.venue.split(',')[0],
+                  desc: m.venue ? m.venue.split(',')[0] : '—',
                 })),
               { date: t.endDate, label: 'Tournament End', color: lm.color, icon: '🏆', desc: 'Final & prize ceremony' },
             ].map((event, i) => (
@@ -291,7 +431,7 @@ export default function TournamentDetail() {
                     {event.label}
                   </div>
                   <div style={{ fontSize: 11, color: '#4b5563', fontFamily: 'Rajdhani', marginTop: 2 }}>
-                    {event.date} · {event.desc}
+                    {event.date || '—'} · {event.desc}
                   </div>
                 </div>
               </div>

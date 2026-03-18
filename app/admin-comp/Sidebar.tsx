@@ -82,8 +82,8 @@ export default function Sidebar() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 38, height: 38, background: 'linear-gradient(135deg, #16a34a, #22c55e)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, boxShadow: '0 0 15px #22c55e44' }}>🏏</div>
             <div>
-              <div style={{ fontFamily: 'Bebas Neue', fontSize: 20, letterSpacing: 2, color: '#f9fafb', lineHeight: 1 }}>ZILLA</div>
-              <div style={{ fontSize: 8, color: '#22c55e', letterSpacing: 3, fontFamily: 'Orbitron', fontWeight: 700 }}>CRICKET ADMIN</div>
+              <div style={{ fontFamily: 'Bebas Neue', fontSize: 20, letterSpacing: 2, color: '#f9fafb', lineHeight: 1 }}>DUAL</div>
+              <div style={{ fontSize: 8, color: '#22c55e', letterSpacing: 3, fontFamily: 'Orbitron', fontWeight: 700 }}> POWER CRICKET</div>
             </div>
           </div>
         </div>

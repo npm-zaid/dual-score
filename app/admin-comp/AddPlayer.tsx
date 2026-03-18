@@ -476,10 +476,10 @@ export default function AddPlayer() {
                 </div>
               )}
               {bowlingStyle !== 'None' && (
-                <div style={{ marginTop: 8, fontSize: 11, color: '#4b5563' }}>⚾ <span style={{ color: '#9ca3af' }}>{bowlingStyle}</span></div>
+                <div style={{ marginTop: 8, fontSize: 11, color: '#4b5563' }}>⚾<span style={{ color: '#9ca3af' }}>{bowlingStyle}</span></div>
               )}
               {baseTeam && (
-                <div style={{ marginTop: 4, fontSize: 11, color: '#4b5563' }}>🛡️ <span style={{ color: '#9ca3af' }}>{baseTeam}</span></div>
+                <div style={{ marginTop: 4, fontSize: 11, color: '#4b5563' }}>🛡️<span style={{ color: '#9ca3af' }}>{baseTeam}</span></div>
               )}
             </div>
           </div>
