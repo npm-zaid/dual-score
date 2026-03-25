@@ -331,9 +331,9 @@ export default function AddTournament() {
   // Step 5 (schedule) — always optional, can save with 0 matches
 
   // ── Schedule helpers ───────────────────────────────────────────────────────
-  const addDraftMatch = () => {
-    setDraftMatches(prev => [...prev, newDraft(prev.length, venue)]);
-  };
+  // const addDraftMatch = () => {
+  //   setDraftMatches(prev => [...prev, newDraft(prev.length, venue)]);
+  // };
 
   const updateDraft = (id: string, updated: DraftMatch) => {
     setDraftMatches(prev => prev.map(d => d.id === id ? updated : d));
@@ -441,6 +441,10 @@ export default function AddTournament() {
     }, 1000);
   };
 
+
+    const handleAddMatch = () => {
+    setActivePage('add-match');
+  };
   // ── Derived ────────────────────────────────────────────────────────────────
   const levelMeta = level ? LEVELS.find(l => l.value === level) : null;
   const accentColor = levelMeta?.color || '#22c55e';
@@ -781,7 +785,7 @@ export default function AddTournament() {
                   </button>
                 )}
                 <button
-                  onClick={addDraftMatch}
+                  onClick={handleAddMatch}
                   style={{
                     padding: '8px 16px', borderRadius: 6, cursor: 'pointer',
                     background: 'linear-gradient(135deg, #16a34a, #22c55e)',
@@ -830,7 +834,7 @@ export default function AddTournament() {
                     >⚡ AUTO ROUND-ROBIN ({tournamentTeams.length * (tournamentTeams.length - 1) / 2} matches)</button>
                   )}
                   <button
-                    onClick={addDraftMatch}
+                    onClick={handleAddMatch}
                     style={{
                       padding: '10px 20px', borderRadius: 7, cursor: 'pointer',
                       background: 'linear-gradient(135deg, #16a34a, #22c55e)',

@@ -132,6 +132,7 @@ export default function AddMatch() {
   };
 
   const handleSave = () => {
+    if (saved) return; 
     const selectedA = players.filter(p => selectedPlayersA.includes(p.id));
     const selectedB = players.filter(p => selectedPlayersB.includes(p.id));
     const tournament = selectedTournament;

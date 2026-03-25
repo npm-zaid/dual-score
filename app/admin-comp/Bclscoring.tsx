@@ -30,7 +30,15 @@ function calcDelivery(event: string, additionalRuns: number = 0, runSource: RunS
     case 'six':    return { event, batRuns:6,  extraRuns:0, totalRuns:6, bowlScore:-2, isLegal:true,  isWicket:false, runSource:'bat' };
     case 'seven':  return { event, batRuns:7,  extraRuns:0, totalRuns:7, bowlScore:-3, isLegal:true,  isWicket:false, runSource:'bat' };
     case 'six_overthrow': return { event, batRuns:0, extraRuns:6, totalRuns:6, bowlScore:-2, isLegal:true, isWicket:false, runSource:'bye' };
-    case 'wicket': return { event, batRuns:0,  extraRuns:0, totalRuns:0, bowlScore:6,  isLegal:true,  isWicket:true,  runSource:'bat' };
+
+    // ── WICKET: bat team = -2 penalty, bowl team = +6 ────────────────────────
+    case 'wicket':
+      return { event, batRuns:0, extraRuns:0, totalRuns:-2, bowlScore:6, isLegal:true, isWicket:true, runSource:'bat' };
+
+    // ── DUAL WICKET: same BCL points as wicket, but same batter continues ─────
+    case 'dual_wicket':
+      return { event, batRuns:0, extraRuns:0, totalRuns:-2, bowlScore:6, isLegal:true, isWicket:false, runSource:'bat' };
+
     case 'noball': {
       const isBatRuns = runSource === 'bat';
       const batterCredit = isBatRuns ? additionalRuns : 0;
@@ -53,28 +61,52 @@ const EVENT_LABELS: Record<string,{label:string;icon:string;color:string}> = {
   five:   { label:'FIVE',    icon:'5',  color:'#ec4899' },
   six:    { label:'SIX',     icon:'6',  color:'#22c55e' },
   seven:  { label:'SEVEN',   icon:'7',  color:'#06b6d4' },
-  wicket: { label:'WICKET',  icon:'W',  color:'#ef4444' },
+  wicket:      { label:'WICKET',      icon:'W',  color:'#ef4444' },
+  dual_wicket: { label:'DUAL WICKET', icon:'DW', color:'#f43f5e' },
   noball: { label:'NO BALL', icon:'NB', color:'#eab308' },
   wide:   { label:'WIDE',    icon:'WD', color:'#a855f7' },
   bye:    { label:'BYE',     icon:'B',  color:'#64748b' },
   legbye: { label:'LEG BYE', icon:'LB', color:'#475569' },
 };
 
-const FORMAT_OVERS: Record<string,number> = { 'T10':10,'T20':20,'ODI':50,'Test':90 };
-function getOversFromFormat(format?:string):number { return FORMAT_OVERS[format??'']??10; }
+// ── Dismissal modes ───────────────────────────────────────────────────────────
+const DISMISSAL_MODES = [
+  { key:'bowled',        label:'Bowled',      short:'b',       icon:'🎯', needsFielder:false },
+  { key:'caught',        label:'Caught',      short:'c',       icon:'🙌', needsFielder:true  },
+  { key:'caught_bowled', label:'C & B',       short:'c&b',     icon:'🎯🙌',needsFielder:false },
+  { key:'lbw',           label:'LBW',         short:'lbw',     icon:'🦵', needsFielder:false },
+  { key:'run_out',       label:'Run Out',     short:'run out', icon:'🏃', needsFielder:true  },
+  { key:'stumped',       label:'Stumped',     short:'st',      icon:'🧤', needsFielder:true  },
+  { key:'hit_wicket',    label:'Hit Wicket',  short:'hit wkt', icon:'💥', needsFielder:false },
+  { key:'obstructing',   label:'Obstructing', short:'obs',     icon:'🚫', needsFielder:false },
+];
+const DISMISSAL_SHORT: Record<string,string> = Object.fromEntries(DISMISSAL_MODES.map(d=>[d.key,d.short]));
+
+const FORMAT_OVERS: Record<string,number> = { 'T2':2,'T11':11 };
+function getOversFromFormat(format?:string):number { return FORMAT_OVERS[format??'']??2; }
 const BALLS_PER_OVER = 6;
 const MAX_WICKETS = 10;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-interface BatterStats { name:string;runs:number;balls:number;fours:number;sixes:number;dismissed:boolean;dotBalls:number;bowlConceded:number; }
+interface BatterStats {
+  name:string; runs:number; balls:number; fours:number; sixes:number;
+  dismissed:boolean; dotBalls:number; bowlConceded:number;
+  dismissalMode?:string; fielder?:string; dismissedByBowler?:string;
+  dualWickets:number;   // times "dual wicket" — batter stays in, innings count
+}
 interface BowlerStats  { name:string;legalBalls:number;runs:number;wickets:number;wides:number;noBalls:number;bowlAcquired:number;dotBalls:number;fours:number;sixes:number; }
-interface Ball         { event:string;batRuns:number;extraRuns:number;totalRuns:number;bowlScore:number;runSource:RunSource;batter?:string;bowler?:string; }
-interface Innings      { battingTeam:string;bowlingTeam:string;balls:Ball[];batScore:number;bowlScore:number;extras:number;legalBalls:number;wickets:number;complete:boolean;batters:BatterStats[];bowlers:BowlerStats[];strikerIdx:number;nonStrikerIdx:number;bowlerIdx:number; }
+interface Ball        {
+  event:string; batRuns:number; extraRuns:number; totalRuns:number;
+  bowlScore:number; runSource:RunSource; batter?:string; bowler?:string;
+  dismissalMode?:string; fielder?:string;
+}
+interface Innings     { battingTeam:string;bowlingTeam:string;balls:Ball[];batScore:number;bowlScore:number;extras:number;legalBalls:number;wickets:number;complete:boolean;batters:BatterStats[];bowlers:BowlerStats[];strikerIdx:number;nonStrikerIdx:number;bowlerIdx:number; }
 
 function initInnings(battingTeam:string, bowlingTeam:string):Innings {
   return { battingTeam,bowlingTeam,balls:[],batScore:0,bowlScore:0,extras:0,legalBalls:0,wickets:0,complete:false,batters:[],bowlers:[],strikerIdx:0,nonStrikerIdx:1,bowlerIdx:0 };
 }
-function newBatter(name:string):BatterStats { return {name,runs:0,balls:0,fours:0,sixes:0,dismissed:false,dotBalls:0,bowlConceded:0}; }
+
+function newBatter(name:string):BatterStats { return {name,runs:0,balls:0,fours:0,sixes:0,dismissed:false,dotBalls:0,bowlConceded:0,dualWickets:0}; }
 function newBowler(name:string):BowlerStats { return {name,legalBalls:0,runs:0,wickets:0,wides:0,noBalls:0,bowlAcquired:0,dotBalls:0,fours:0,sixes:0}; }
 function sr(runs:number, balls:number) { return balls===0?'0.0':((runs/balls)*100).toFixed(1); }
 function economy(runs:number, lb:number) { return lb===0?'0.00':((runs/lb)*6).toFixed(2); }
@@ -93,7 +125,7 @@ function btnStyle(bg:string, color:string, full=false):React.CSSProperties {
   return { background:bg,border:`1px solid ${color}55`,color,fontFamily:'Orbitron',fontWeight:700,fontSize:12,padding:full?'10px 20px':'10px 16px',borderRadius:6,cursor:'pointer',flex:full?1:undefined };
 }
 
-// ── FIX 1: PlayerPicker now accepts playerData so it can show role badges for actual team players ──
+// ── PlayerPicker ──────────────────────────────────────────────────────────────
 function PlayerPicker({ label, value, onChange, players, playerData=[], color='#3b82f6', exclude=[] }: {
   label:string; value:string; onChange:(v:string)=>void;
   players:string[];
@@ -163,7 +195,6 @@ function PlayerPicker({ label, value, onChange, players, playerData=[], color='#
               }}
             />
           </div>
-
           <div style={{maxHeight:260,overflowY:'auto'}}>
             {filtered.length > 0 ? filtered.map(pName => {
               const pData = playerData.find(p => p.name === pName);
@@ -224,9 +255,9 @@ function OpeningSetupModal({ battingTeam, bowlingTeam, battingPlayers, bowlingPl
   const valid = striker && nonStriker && bowler && striker !== nonStriker;
 
   return (
-    <div  style={MODAL_BG}>
+    <div style={MODAL_BG}>
       <div style={{...MODAL_CARD,overflow:'visible'}}>
-        <div  style={{position:'absolute',top:0,left:0,right:0,height:2,borderRadius:'14px 14px 0 0',background:'linear-gradient(90deg, transparent, #22c55e, transparent)'}} />
+        <div style={{position:'absolute',top:0,left:0,right:0,height:2,borderRadius:'14px 14px 0 0',background:'linear-gradient(90deg, transparent, #22c55e, transparent)'}} />
         <ModalTitle>OPENING PLAYERS</ModalTitle>
         <ModalSub>Select opening batters &amp; bowler to start the innings</ModalSub>
         <PlayerPicker label={`⚡ STRIKER · ${battingTeam}`}      value={striker}    onChange={setStriker} players={battingPlayers} playerData={battingPlayerData} color="#22c55e" exclude={[nonStriker]} />
@@ -302,70 +333,28 @@ function NewBowlerModal({ bowlingTeam, lastBowler, overNumber, bowlingPlayers, b
   );
 }
 
-// ── Boundary/Overthrow modal for 4s and 6s ───────────────────────────────────
+// ── Boundary/Overthrow modal ──────────────────────────────────────────────────
 function BoundaryOverthrowModal({ event, onConfirm, onCancel }: {
   event:string; onConfirm:(isBoundary:boolean)=>void; onCancel:()=>void;
 }) {
   const accentColor = event === 'four' ? '#f97316' : '#22c55e';
   const eventLabel = event === 'four' ? '4 RUNS' : '6 RUNS';
-  
+
   return (
     <div style={MODAL_BG}>
       <div style={{...MODAL_CARD,maxWidth:480}}>
         <div style={{position:'absolute',top:0,left:0,right:0,height:2,borderRadius:'14px 14px 0 0',background:`linear-gradient(90deg, transparent, ${accentColor}, transparent)`}} />
         <ModalTitle>{eventLabel} — HOW?</ModalTitle>
         <ModalSub>Select how the {eventLabel.toLowerCase()} was scored</ModalSub>
-        
         <div style={{display:'flex',gap:10,flexDirection:'column',marginBottom:18}}>
-          <button 
-            onClick={() => onConfirm(true)} 
-            style={{
-              background:`${accentColor}15`,
-              border:`1.5px solid ${accentColor}44`,
-              borderRadius:8,
-              padding:'16px 20px',
-              color:accentColor,
-              fontFamily:'Orbitron',
-              fontWeight:700,
-              fontSize:13,
-              letterSpacing:1,
-              cursor:'pointer',
-              display:'flex',
-              alignItems:'center',
-              gap:12,
-              transition:'all 0.2s'
-            }}
-            onMouseEnter={e => {(e.currentTarget as HTMLButtonElement).style.background = `${accentColor}25`; (e.currentTarget as HTMLButtonElement).style.borderColor = `${accentColor}66`;}}
-            onMouseLeave={e => {(e.currentTarget as HTMLButtonElement).style.background = `${accentColor}15`; (e.currentTarget as HTMLButtonElement).style.borderColor = `${accentColor}44`;}}
-          >
+          <button onClick={() => onConfirm(true)} style={{background:`${accentColor}15`,border:`1.5px solid ${accentColor}44`,borderRadius:8,padding:'16px 20px',color:accentColor,fontFamily:'Orbitron',fontWeight:700,fontSize:13,letterSpacing:1,cursor:'pointer',display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:20}}>🚀</span>
             <div style={{textAlign:'left'}}>
               <div style={{fontFamily:'Orbitron',fontWeight:900}}>BOUNDARY</div>
               <div style={{fontSize:11,color:`${accentColor}aa`,fontFamily:'Rajdhani'}}>Batter: {event === 'four' ? '+4' : '+6'} · Extras: 0</div>
             </div>
           </button>
-          
-          <button 
-            onClick={() => onConfirm(false)} 
-            style={{
-              background:'#3b82f615',
-              border:'1.5px solid #3b82f644',
-              borderRadius:8,
-              padding:'16px 20px',
-              color:'#3b82f6',
-              fontFamily:'Orbitron',
-              fontWeight:700,
-              fontSize:13,
-              letterSpacing:1,
-              cursor:'pointer',
-              display:'flex',
-              alignItems:'center',
-              gap:12,
-              transition:'all 0.2s'
-            }}
-            onMouseEnter={e => {(e.currentTarget as HTMLButtonElement).style.background = '#3b82f625'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#3b82f666';}}
-            onMouseLeave={e => {(e.currentTarget as HTMLButtonElement).style.background = '#3b82f615'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#3b82f644';}}
-          >
+          <button onClick={() => onConfirm(false)} style={{background:'#3b82f615',border:'1.5px solid #3b82f644',borderRadius:8,padding:'16px 20px',color:'#3b82f6',fontFamily:'Orbitron',fontWeight:700,fontSize:13,letterSpacing:1,cursor:'pointer',display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:20}}>🎯</span>
             <div style={{textAlign:'left'}}>
               <div style={{fontFamily:'Orbitron',fontWeight:900}}>OVERTHROW</div>
@@ -373,13 +362,7 @@ function BoundaryOverthrowModal({ event, onConfirm, onCancel }: {
             </div>
           </button>
         </div>
-        
-        <button 
-          onClick={onCancel} 
-          style={btnStyle('#ef444422','#ef4444',true)}
-        >
-          CANCEL
-        </button>
+        <button onClick={onCancel} style={btnStyle('#ef444422','#ef4444',true)}>CANCEL</button>
       </div>
     </div>
   );
@@ -436,13 +419,108 @@ function ExtraDeliveryModal({ event, onConfirm, onCancel }: {
   );
 }
 
+// ── Wicket Modal ──────────────────────────────────────────────────────────────
+function WicketModal({ batter, bowler, onConfirm, onCancel }: {
+  batter:string; bowler:string;
+  onConfirm:(mode:string, fielder:string)=>void;
+  onCancel:()=>void;
+}) {
+  const [mode,    setMode]    = useState('');
+  const [fielder, setFielder] = useState('');
+
+  const selectedMode = DISMISSAL_MODES.find(d => d.key === mode);
+  const valid = !!mode;
+
+  return (
+    <div style={MODAL_BG}>
+      <div style={{...MODAL_CARD, maxWidth:480, maxHeight:'90vh', overflowY:'auto'}}>
+        <div style={{position:'absolute',top:0,left:0,right:0,height:3,borderRadius:'14px 14px 0 0',background:'linear-gradient(90deg, transparent, #ef4444, transparent)'}} />
+
+        {/* Header strip */}
+        <div style={{marginBottom:16,background:'#ef444412',border:'1px solid #ef444430',borderRadius:10,padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:9,fontFamily:'Orbitron',color:'#ef4444',letterSpacing:2,marginBottom:3}}>⚡ WICKET!</div>
+            <div style={{fontFamily:'Bebas Neue',fontSize:22,color:'#f9fafb',letterSpacing:2,lineHeight:1}}>{batter}</div>
+            <div style={{fontSize:10,color:'#6b7280',fontFamily:'Rajdhani',marginTop:3}}>Bowler: <span style={{color:'#f97316'}}>{bowler}</span></div>
+          </div>
+          <div style={{display:'flex',gap:10}}>
+            <div style={{background:'#ef444418',border:'1px solid #ef444433',borderRadius:8,padding:'8px 12px',textAlign:'center'}}>
+              <div style={{fontSize:8,fontFamily:'Orbitron',color:'#ef4444',letterSpacing:1,marginBottom:2}}>BAT TEAM</div>
+              <div style={{fontFamily:'Orbitron',fontSize:20,fontWeight:900,color:'#ef4444'}}>−2</div>
+            </div>
+            <div style={{background:'#22c55e18',border:'1px solid #22c55e33',borderRadius:8,padding:'8px 12px',textAlign:'center'}}>
+              <div style={{fontSize:8,fontFamily:'Orbitron',color:'#22c55e',letterSpacing:1,marginBottom:2}}>BOWL TEAM</div>
+              <div style={{fontFamily:'Orbitron',fontSize:20,fontWeight:900,color:'#22c55e'}}>+6</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 1: Dismissal mode */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:9,fontFamily:'Orbitron',color:'#9ca3af',letterSpacing:2,marginBottom:10}}>HOW OUT?</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
+            {DISMISSAL_MODES.map(dm => (
+              <button
+                key={dm.key}
+                onClick={() => { setMode(dm.key); if (!dm.needsFielder) setFielder(''); }}
+                style={{
+                  background: mode===dm.key ? '#ef444422' : '#111827',
+                  border: `1.5px solid ${mode===dm.key ? '#ef4444' : '#1f2937'}`,
+                  borderRadius:8, padding:'10px 6px', color: mode===dm.key ? '#ef4444' : '#6b7280',
+                  cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:4,
+                  transition:'all 0.15s',
+                }}
+              >
+                <span style={{fontSize:18}}>{dm.icon}</span>
+                <span style={{fontFamily:'Orbitron',fontSize:7,letterSpacing:0.5,textAlign:'center',lineHeight:1.3}}>{dm.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Fielder (conditional) */}
+        {selectedMode?.needsFielder && (
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:9,fontFamily:'Orbitron',color:'#9ca3af',letterSpacing:2,marginBottom:8}}>
+              {mode==='run_out'?'🏃 RAN OUT BY':mode==='stumped'?'🧤 STUMPED BY':'🙌 CAUGHT BY'}{' '}
+              <span style={{color:'#4b5563'}}>(OPTIONAL)</span>
+            </div>
+            <input
+              value={fielder}
+              onChange={e => setFielder(e.target.value)}
+              placeholder="Enter fielder name..."
+              style={{width:'100%',background:'#111827',border:'1px solid #374151',borderRadius:7,color:'#f9fafb',fontFamily:'Rajdhani',fontSize:13,padding:'9px 12px',boxSizing:'border-box'}}
+            />
+          </div>
+        )}
+
+        <div style={{display:'flex',gap:10,marginTop:4}}>
+          <button
+            disabled={!valid}
+            onClick={() => valid && onConfirm(mode, fielder)}
+            style={{flex:1,background:valid?'linear-gradient(135deg,#b91c1c,#ef4444)':'#1f2937',border:'none',borderRadius:8,color:valid?'#fff':'#374151',fontFamily:'Orbitron',fontWeight:900,fontSize:12,letterSpacing:1,padding:'12px',cursor:valid?'pointer':'not-allowed',transition:'all 0.2s'}}
+          >
+            CONFIRM WICKET →
+          </button>
+          <button onClick={onCancel} style={{...btnStyle('#1f2937','#6b7280'),padding:'12px 18px'}}>CANCEL</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Helper: traditional runs = BCL batScore + (wickets × 2 penalty reversal) ─
+function traditionalRuns(inn: Innings): number {
+  return inn.batScore + inn.wickets * 2;
+}
+
 // ── ScoreBoard ────────────────────────────────────────────────────────────────
 function ScoreBoard({ inn, label, inningsNum, otherInn, isSecondInningsLive }: {
   inn:Innings; label:string; inningsNum:number; otherInn?:Innings|null; isSecondInningsLive?:boolean;
 }) {
   const overs=Math.floor(inn.legalBalls/6), balls=inn.legalBalls%6;
-  
-  // Calculate extras breakdown
+  const tRuns = traditionalRuns(inn);  // traditional cricket runs (no -2 penalty)
+
   const extrasBreakdown = () => {
     const wides = inn.bowlers.reduce((sum, b) => sum + b.wides, 0);
     const noBalls = inn.bowlers.reduce((sum, b) => sum + b.noBalls, 0);
@@ -460,11 +538,11 @@ function ScoreBoard({ inn, label, inningsNum, otherInn, isSecondInningsLive }: {
         <div style={{position:'absolute',top:0,left:0,right:0,height:2,background:'linear-gradient(90deg,transparent,#3b82f688,transparent)'}} />
         <div style={{fontSize:10,fontFamily:'Orbitron',color:'#4b5563',letterSpacing:2,marginBottom:10}}>{label}</div>
         <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:14}}>
-          <span style={{fontFamily:'Orbitron',fontSize:30,fontWeight:900,color:'#f9fafb',lineHeight:1}}>{inn.batScore}<span style={{fontSize:18,color:'#ef4444'}}>/{inn.wickets}</span></span>
+          <span style={{fontFamily:'Orbitron',fontSize:30,fontWeight:900,color:'#f9fafb',lineHeight:1}}>{tRuns}<span style={{fontSize:18,color:'#ef4444'}}>/{inn.wickets}</span></span>
           <span style={{fontFamily:'Orbitron',fontSize:13,color:'#22c55e',fontWeight:700}}>{overs}.{balls} Ov</span>
           {inn.complete && <span style={{fontSize:9,fontFamily:'Orbitron',color:'#22c55e55',letterSpacing:1}}>FINAL</span>}
         </div>
-        {inn.extras>0 && <div style={{fontSize:10,color:'#6b7280',fontFamily:'Rajdhani',marginBottom:10}}>Extras: {inn.extras} {extrasBreakdown()}</div>}
+        {inn.extras>0 && <div style={{fontSize:10,color:'white',fontFamily:'Rajdhani',marginBottom:10}}>Extras: {inn.extras} {extrasBreakdown()}</div>}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#3b82f611',border:'1px solid #3b82f633',borderRadius:6,padding:'8px 12px',marginBottom:8}}>
           <div><div style={{fontSize:9,fontFamily:'Orbitron',color:'#3b82f6',letterSpacing:1,marginBottom:3}}>BATTING</div><div style={{fontFamily:'Bebas Neue',fontSize:22,letterSpacing:2,color:'#f9fafb',lineHeight:1}}>{inn.battingTeam}</div></div>
           <div style={{textAlign:'right'}}><div style={{fontSize:9,fontFamily:'Orbitron',color:'#4b5563',letterSpacing:1,marginBottom:2}}>BAT SCORE</div><div style={{fontFamily:'Orbitron',fontSize:28,fontWeight:900,color:'#3b82f6',lineHeight:1}}>{inn.batScore}</div></div>
@@ -484,7 +562,7 @@ function ScoreBoard({ inn, label, inningsNum, otherInn, isSecondInningsLive }: {
       <div style={{position:'absolute',top:0,left:0,right:0,height:2,background:'linear-gradient(90deg,transparent,#22c55e88,transparent)'}} />
       <div style={{fontSize:10,fontFamily:'Orbitron',color:'#4b5563',letterSpacing:2,marginBottom:10}}>{label}</div>
       <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:14}}>
-        <span style={{fontFamily:'Orbitron',fontSize:30,fontWeight:900,color:'#f9fafb',lineHeight:1}}>{inn.batScore}<span style={{fontSize:18,color:'#ef4444'}}>/{inn.wickets}</span></span>
+        <span style={{fontFamily:'Orbitron',fontSize:30,fontWeight:900,color:'#f9fafb',lineHeight:1}}>{tRuns}<span style={{fontSize:18,color:'#ef4444'}}>/{inn.wickets}</span></span>
         <span style={{fontFamily:'Orbitron',fontSize:13,color:'#22c55e',fontWeight:700}}>{overs}.{balls} Ov</span>
       </div>
       {inn.extras>0 && <div style={{fontSize:10,color:'#6b7280',fontFamily:'Rajdhani',marginBottom:10}}>Extras: {inn.extras} {extrasBreakdown()}</div>}
@@ -570,6 +648,28 @@ function CreasePanel({ inn }:{ inn:Innings }) {
   );
 }
 
+// ── Dismissal info formatter ──────────────────────────────────────────────────
+function dismissalText(b: BatterStats): React.ReactNode {
+  if (!b.dismissed) return null;
+  if (!b.dismissalMode) return <span style={{color:'#ef4444'}}>OUT</span>;
+  const short = DISMISSAL_SHORT[b.dismissalMode] ?? b.dismissalMode;
+  let text = short.toUpperCase();
+  if (b.dismissalMode === 'bowled' || b.dismissalMode === 'lbw' || b.dismissalMode === 'hit_wicket') {
+    if (b.dismissedByBowler) text += ` ${b.dismissedByBowler}`;
+  } else if (b.dismissalMode === 'caught_bowled') {
+    if (b.dismissedByBowler) text += ` ${b.dismissedByBowler}`;
+  } else if (b.dismissalMode === 'caught') {
+    if (b.fielder) text += ` ${b.fielder}`;
+    if (b.dismissedByBowler) text += ` b ${b.dismissedByBowler}`;
+  } else if (b.dismissalMode === 'stumped') {
+    if (b.fielder) text += ` ${b.fielder}`;
+    if (b.dismissedByBowler) text += ` b ${b.dismissedByBowler}`;
+  } else if (b.dismissalMode === 'run_out') {
+    if (b.fielder) text += ` (${b.fielder})`;
+  }
+  return <span style={{color:'#ef4444',fontSize:9}}>{text}</span>;
+}
+
 // ── Scorecard ─────────────────────────────────────────────────────────────────
 function ScorecardTable({ inn }:{ inn:Innings }) {
   const { batters, bowlers } = inn;
@@ -583,7 +683,7 @@ function ScorecardTable({ inn }:{ inn:Innings }) {
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,fontFamily:'Rajdhani'}}>
               <thead><tr style={{borderBottom:'1px solid #1f2937'}}>
                 {['BATTER','R','B','●','4s','6s','SR','BOWL CON','NET RUN','STATUS'].map(h=>(
-                  <th key={h} style={{padding:'5px 8px',textAlign:h==='BATTER'?'left':'right',fontSize:9,fontFamily:'Orbitron',color:'#374151',letterSpacing:1,fontWeight:400}}>{h}</th>
+                  <th key={h} style={{padding:'5px 8px',textAlign:h==='BATTER'||h==='STATUS'?'left':'right',fontSize:9,fontFamily:'Orbitron',color:'#374151',letterSpacing:1,fontWeight:400}}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
@@ -607,8 +707,20 @@ function ScorecardTable({ inn }:{ inn:Innings }) {
                       <td style={{padding:'7px 8px',textAlign:'right',color:'#9ca3af',fontSize:11}}>{sr(b.runs,b.balls)}</td>
                       <td style={{padding:'7px 8px',textAlign:'right',color:'#f97316',fontSize:11}}>{b.bowlConceded}</td>
                       <td style={{padding:'7px 8px',textAlign:'right',fontFamily:'Orbitron',fontWeight:700,fontSize:12,color:netColor}}>{netRun>0?'+':''}{netRun}</td>
-                      <td style={{padding:'7px 8px',textAlign:'right',fontSize:10}}>
-                        {b.dismissed?<span style={{color:'#ef4444'}}>OUT</span>:isStriker?<span style={{color:'#22c55e'}}>BATTING*</span>:isNS?<span style={{color:'#3b82f6'}}>NOT OUT</span>:<span style={{color:'#4b5563'}}>NOT OUT</span>}
+                      <td style={{padding:'7px 8px',textAlign:'left',fontSize:10,maxWidth:140}}>
+                        {b.dismissed
+                          ? dismissalText(b)
+                          : isStriker
+                            ? <span style={{color:'#22c55e'}}>
+                                BATTING*{b.dualWickets>0&&<span style={{color:'#f43f5e',marginLeft:5,fontSize:9,fontFamily:'Orbitron'}}>DW×{b.dualWickets}</span>}
+                              </span>
+                            : isNS
+                              ? <span style={{color:'#3b82f6'}}>
+                                  NOT OUT{b.dualWickets>0&&<span style={{color:'#f43f5e',marginLeft:5,fontSize:9,fontFamily:'Orbitron'}}>DW×{b.dualWickets}</span>}
+                                </span>
+                              : <span style={{color:'#4b5563'}}>
+                                  NOT OUT{b.dualWickets>0&&<span style={{color:'#f43f5e',marginLeft:5,fontSize:9,fontFamily:'Orbitron'}}>DW×{b.dualWickets}</span>}
+                                </span>}
                       </td>
                     </tr>
                   );
@@ -660,22 +772,21 @@ function ScorecardTable({ inn }:{ inn:Innings }) {
   );
 }
 
-// ── FIX 3: Dual-score ball dot (left=batter, right=bowler) ────────────────────
+// ── Ball Dot (left=batter, right=bowler) ──────────────────────────────────────
 function BallDot({ b, idx }:{ b:Ball; idx:number }) {
   const meta = EVENT_LABELS[b.event] || {color:'#6b7280',icon:'?',label:'?'};
 
-  // Left colour = batter outcome
-  const leftColor = b.event==='wicket' ? '#ef4444'
-    : b.event==='six'    ? '#22c55e'
-    : b.event==='six_overthrow' ? '#22c55e'
-    : b.event==='four'   ? '#f97316'
+  const leftColor = b.event==='wicket'          ? '#ef4444'
+    : b.event==='dual_wicket'    ? '#f43f5e'
+    : b.event==='six'            ? '#22c55e'
+    : b.event==='six_overthrow'  ? '#22c55e'
+    : b.event==='four'           ? '#f97316'
     : b.event==='four_overthrow' ? '#f97316'
-    : b.event==='wide'   ? '#a855f7'
-    : b.event==='noball' ? '#eab308'
-    : b.batRuns > 0      ? '#3b82f6'
+    : b.event==='wide'           ? '#a855f7'
+    : b.event==='noball'         ? '#eab308'
+    : b.batRuns > 0              ? '#3b82f6'
     : '#374151';
 
-  // Right colour = bowler points
   const bp = b.bowlScore;
   const rightColor = bp >= 6 ? '#22c55e'
     : bp >= 3 ? '#4ade80'
@@ -684,11 +795,17 @@ function BallDot({ b, idx }:{ b:Ball; idx:number }) {
     : bp >= -1 ? '#f97316'
     : '#ef4444';
 
-  const batLabel  = b.event==='wicket' ? 'W'
-    : b.event==='wide'   ? 'Wd'
-    : b.event==='noball' ? 'NB'
+  const batLabel  = b.event==='wicket'      ? 'W'
+    : b.event==='dual_wicket' ? 'DW'
+    : b.event==='wide'        ? 'Wd'
+    : b.event==='noball'      ? 'NB'
     : String(b.batRuns);
   const bowlLabel = bp >= 0 ? `+${bp}` : String(bp);
+
+  // dismissal tooltip info
+  const dismissalInfo = b.event==='wicket' && b.dismissalMode
+    ? ` | ${DISMISSAL_SHORT[b.dismissalMode]??b.dismissalMode}${b.fielder?' '+b.fielder:''}`
+    : '';
 
   const size = 36;
   const r = size / 2;
@@ -696,7 +813,7 @@ function BallDot({ b, idx }:{ b:Ball; idx:number }) {
 
   return (
     <div
-      title={`${b.batter??''} vs ${b.bowler??''} | ${meta.label} | Bat:${batLabel} Bowl:${bowlLabel}`}
+      title={`${b.batter??''} vs ${b.bowler??''} | ${meta.label}${dismissalInfo} | Bat:${batLabel} Bowl:${bowlLabel} | BatTeam:${b.totalRuns>=0?'+':''}${b.totalRuns}`}
       style={{position:'relative',width:size,height:size,flexShrink:0,cursor:'default'}}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{position:'absolute',inset:0}}>
@@ -732,20 +849,18 @@ type ModalState =
   | { type:'newBatter'; dismissedName:string }
   | { type:'newBowler'; overNumber:number }
   | { type:'extra'; event:string }
-  | { type:'boundaryOverthrow'; event:string };
+  | { type:'boundaryOverthrow'; event:string }
+  | { type:'wicket' };
 
 export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }: {
   scoringMatch?:any; updateMatch?:(m:any)=>void; setActivePage?:(p:string)=>void;
 }) {
-  // FIX 2: Read persisted state from context so navigation doesn't reset it
   const { bclScoringState, setBclScoringState } = useApp();
 
   const TOTAL_OVERS = getOversFromFormat(scoringMatch?.format);
   const TOTAL_BALLS = TOTAL_OVERS * BALLS_PER_OVER;
-
   const matchId = scoringMatch?.id ?? '';
 
-  // FIX 1: Derive player lists from actual scoringMatch teams instead of hardcoded arrays
   const teamAPlayerData:{name:string;role:string;battingStyle:string;bowlingStyle:string}[] =
     scoringMatch?.teamA?.players?.map((p:any) => ({ name:p.name, role:p.role, battingStyle:p.battingStyle, bowlingStyle:p.bowlingStyle })) ?? [];
   const teamBPlayerData:{name:string;role:string;battingStyle:string;bowlingStyle:string}[] =
@@ -756,7 +871,6 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
   const [teamA,setTeamA] = useState(scoringMatch?.teamA?.shortName||scoringMatch?.teamA?.name||'TEAM A');
   const [teamB,setTeamB] = useState(scoringMatch?.teamB?.shortName||scoringMatch?.teamB?.name||'TEAM B');
 
-  // FIX 2: Restore from context if same match, else fresh state
   const persisted = bclScoringState && (bclScoringState as any).matchId === matchId ? bclScoringState as any : null;
 
   const [started,setStarted]                     = useState(persisted?.started ?? false);
@@ -770,7 +884,6 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
   const prevLegalBalls        = useRef<number>(innings[inningsIdx]?.legalBalls ?? 0);
   const prevWicketBallIdx     = useRef<number>(-1);
 
-  // FIX 2: Persist state to context on every change
   useEffect(() => {
     if (!matchId) return;
     setBclScoringState({ matchId, started, inningsIdx, innings, modal, matchOver, secondInningsStarted } as any);
@@ -814,7 +927,14 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
     setModal(null);
   }
 
-  function applyDelivery(event:string, additionalRuns:number=0, runSource:RunSource='bat') {
+  // ── Core delivery application ─────────────────────────────────────────────
+  function applyDelivery(
+    event:string,
+    additionalRuns:number=0,
+    runSource:RunSource='bat',
+    dismissalMode?:string,
+    fielder?:string,
+  ) {
     const delivery=calcDelivery(event,additionalRuns,runSource);
     setInnings(prev => {
       const all=[...prev] as [Innings|null,Innings|null];
@@ -824,21 +944,39 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
       const ballsCopy=[...inn.balls];
       const bats=inn.batters.map(b=>({...b})), bowls=inn.bowlers.map(b=>({...b}));
 
-      ballsCopy.push({event,batRuns:delivery.batRuns,extraRuns:delivery.extraRuns,totalRuns:delivery.totalRuns,bowlScore:delivery.bowlScore,runSource:delivery.runSource,batter:striker.name,bowler:bowler.name});
+      // Record the ball (with dismissal metadata if wicket)
+      ballsCopy.push({
+        event, batRuns:delivery.batRuns, extraRuns:delivery.extraRuns,
+        totalRuns:delivery.totalRuns, bowlScore:delivery.bowlScore,
+        runSource:delivery.runSource, batter:striker.name, bowler:bowler.name,
+        dismissalMode, fielder,
+      });
 
+      // ── Batter stats ──────────────────────────────────────────────────────
       const bat=bats[inn.strikerIdx];
       if (delivery.isLegal) bat.balls+=1;
-      bat.runs+=delivery.batRuns;
+      bat.runs+=delivery.batRuns;                                               // bat runs (0 for bye/legbye wicket, actual for bat-run wicket)
       if (event==='four'||event==='four_overthrow') bat.fours+=1;
       if (event==='six'||event==='six_overthrow')  bat.sixes+=1;
-      if (delivery.batRuns===0&&delivery.isLegal&&!delivery.isWicket) bat.dotBalls+=1;
-      if (delivery.isWicket) bat.dismissed=true;
-      bat.bowlConceded+=delivery.bowlScore;
+      if (delivery.batRuns===0&&delivery.isLegal&&!delivery.isWicket&&event!=='dual_wicket') bat.dotBalls+=1;
+      if (delivery.isWicket) {
+        bat.dismissed=true;
+        bat.dismissalMode=dismissalMode;
+        bat.fielder=fielder;
+        bat.dismissedByBowler=bowler.name;
+      }
+      // dual_wicket: batter stays in but record the dual wicket count
+      if (event==='dual_wicket') {
+        bat.dualWickets=(bat.dualWickets||0)+1;
+        bat.dotBalls+=1;  // counts as dot for batter
+      }
+      bat.bowlConceded+=delivery.bowlScore;                                     // always +6 for wicket
 
+      // ── Bowler stats ──────────────────────────────────────────────────────
       const bwl=bowls[inn.bowlerIdx];
       if (delivery.isLegal) bwl.legalBalls+=1;
       bwl.runs+=delivery.batRuns+delivery.extraRuns;
-      if (delivery.isWicket) bwl.wickets+=1;
+      if (delivery.isWicket || event==='dual_wicket') bwl.wickets+=1;
       if (event==='wide')   bwl.wides+=1;
       if (event==='noball') bwl.noBalls+=1;
       bwl.bowlAcquired+=delivery.bowlScore;
@@ -846,14 +984,21 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
       if (event==='four'||event==='four_overthrow') bwl.fours+=1;
       if (event==='six'||event==='six_overthrow')  bwl.sixes+=1;
 
-      inn.batScore+=delivery.totalRuns; inn.extras+=delivery.extraRuns; inn.bowlScore+=delivery.bowlScore;
+      // ── Innings totals ────────────────────────────────────────────────────
+      inn.batScore+=delivery.totalRuns;     // includes -2 penalty for wicket
+      inn.extras+=delivery.extraRuns;
+      inn.bowlScore+=delivery.bowlScore;
       if (delivery.isLegal) inn.legalBalls+=1;
-      if (delivery.isWicket) inn.wickets+=1;
+      if (delivery.isWicket || event==='dual_wicket') inn.wickets+=1;
       inn.balls=ballsCopy; inn.batters=bats; inn.bowlers=bowls;
 
-      if (delivery.batRuns===1||delivery.batRuns===3) [inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
-      if ((event==='bye'||event==='legbye')&&(additionalRuns===1||additionalRuns===3)) [inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
+      // ── Striker rotation (odd bat/bye runs swap ends) ─────────────────────
+      if (!delivery.isWicket) {
+        if (delivery.batRuns===1||delivery.batRuns===3) [inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
+        if ((event==='bye'||event==='legbye')&&(additionalRuns===1||additionalRuns===3)) [inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
+      }
 
+      // ── Innings end check ─────────────────────────────────────────────────
       const allOut=inn.wickets>=MAX_WICKETS, oversUp=inn.legalBalls>=TOTAL_BALLS;
       if (allOut||oversUp) {
         if (allOut&&!oversUp){const r=TOTAL_BALLS-inn.legalBalls;inn.bowlScore+=r*4;inn.balls=[...inn.balls,{event:'_bonus',batRuns:0,extraRuns:0,totalRuns:0,bowlScore:r*4,runSource:'bat'}];}
@@ -916,9 +1061,16 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
     if (matchOver||modal) return;
     const inn=innings[inningsIdx];
     if (!inn||inn.batters.length===0) return;
-    if (['noball','wide','bye','legbye'].includes(event)){setModal({type:'extra',event});}
-    else if (['four','six'].includes(event)){setModal({type:'boundaryOverthrow',event});}
+    if (['noball','wide','bye','legbye'].includes(event))  { setModal({type:'extra',event}); }
+    else if (['four','six'].includes(event))               { setModal({type:'boundaryOverthrow',event}); }
+    else if (event==='wicket')                             { setModal({type:'wicket'}); }
+    else if (event==='dual_wicket')                        { applyDelivery('dual_wicket'); }
     else applyDelivery(event);
+  }
+
+  function handleWicketConfirm(mode:string, fielder:string) {
+    applyDelivery('wicket', 0, 'bat', mode, fielder);
+    setModal(null);
   }
 
   function handleBoundaryOverthrow(isBoundary:boolean) {
@@ -937,20 +1089,50 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
       if (rb.length===0) return prev;
       const last=rb[rb.length-1];
       inn.balls=rb.slice(0,-1);
-      inn.batScore-=last.totalRuns; inn.extras-=last.extraRuns; inn.bowlScore-=last.bowlScore;
+      inn.batScore-=last.totalRuns;   // correctly reverses -2 penalty too
+      inn.extras-=last.extraRuns;
+      inn.bowlScore-=last.bowlScore;
       if (last.event!=='wide') inn.legalBalls=Math.max(0,inn.legalBalls-1);
-      if (last.event==='wicket') inn.wickets=Math.max(0,inn.wickets-1);
+      if (last.event==='wicket'||last.event==='dual_wicket') inn.wickets=Math.max(0,inn.wickets-1);
       inn.complete=false;
       const bats=inn.batters.map(b=>({...b}));
       const bi=bats.findIndex(b=>b.name===last.batter);
-      if (bi>=0){const b=bats[bi];if(last.event!=='wide')b.balls=Math.max(0,b.balls-1);b.runs=Math.max(0,b.runs-last.batRuns);if(last.event==='four'||last.event==='four_overthrow')b.fours=Math.max(0,b.fours-1);if(last.event==='six'||last.event==='six_overthrow')b.sixes=Math.max(0,b.sixes-1);if(last.event==='wicket')b.dismissed=false;if(last.batRuns===0&&last.event!=='wide'&&last.event!=='wicket')b.dotBalls=Math.max(0,b.dotBalls-1);b.bowlConceded-=last.bowlScore;}
+      if (bi>=0){
+        const b=bats[bi];
+        if(last.event!=='wide') b.balls=Math.max(0,b.balls-1);
+        b.runs=Math.max(0,b.runs-last.batRuns);
+        if(last.event==='four'||last.event==='four_overthrow') b.fours=Math.max(0,b.fours-1);
+        if(last.event==='six'||last.event==='six_overthrow')  b.sixes=Math.max(0,b.sixes-1);
+        if(last.event==='wicket'){
+          b.dismissed=false;
+          b.dismissalMode=undefined;
+          b.fielder=undefined;
+          b.dismissedByBowler=undefined;
+        }
+        if(last.event==='dual_wicket') b.dualWickets=Math.max(0,(b.dualWickets||0)-1);
+        if(last.batRuns===0&&last.event!=='wide'&&last.event!=='wicket') b.dotBalls=Math.max(0,b.dotBalls-1);
+        b.bowlConceded-=last.bowlScore;
+      }
       inn.batters=bats;
       const bowls=inn.bowlers.map(b=>({...b}));
       const bwi=bowls.findIndex(b=>b.name===last.bowler);
-      if (bwi>=0){const b=bowls[bwi];if(last.event!=='wide')b.legalBalls=Math.max(0,b.legalBalls-1);b.runs=Math.max(0,b.runs-last.batRuns-last.extraRuns);if(last.event==='wicket')b.wickets=Math.max(0,b.wickets-1);if(last.event==='wide')b.wides=Math.max(0,b.wides-1);if(last.event==='noball')b.noBalls=Math.max(0,b.noBalls-1);b.bowlAcquired-=last.bowlScore;if(last.batRuns===0&&last.event!=='wide'&&last.event!=='wicket')b.dotBalls=Math.max(0,b.dotBalls-1);if(last.event==='four'||last.event==='four_overthrow')b.fours=Math.max(0,b.fours-1);if(last.event==='six'||last.event==='six_overthrow')b.sixes=Math.max(0,b.sixes-1);}
+      if (bwi>=0){
+        const b=bowls[bwi];
+        if(last.event!=='wide') b.legalBalls=Math.max(0,b.legalBalls-1);
+        b.runs=Math.max(0,b.runs-last.batRuns-last.extraRuns);
+        if(last.event==='wicket'||last.event==='dual_wicket') b.wickets=Math.max(0,b.wickets-1);
+        if(last.event==='wide')   b.wides=Math.max(0,b.wides-1);
+        if(last.event==='noball') b.noBalls=Math.max(0,b.noBalls-1);
+        b.bowlAcquired-=last.bowlScore;
+        if(last.batRuns===0&&last.event!=='wide'&&last.event!=='wicket'&&last.event!=='dual_wicket') b.dotBalls=Math.max(0,b.dotBalls-1);
+        if(last.event==='four'||last.event==='four_overthrow') b.fours=Math.max(0,b.fours-1);
+        if(last.event==='six'||last.event==='six_overthrow')  b.sixes=Math.max(0,b.sixes-1);
+      }
       inn.bowlers=bowls;
-      if (last.batRuns===1||last.batRuns===3)[inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
-      if ((last.event==='bye'||last.event==='legbye')&&(last.extraRuns===1||last.extraRuns===3))[inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
+      if (!last.isWicket) {
+        if (last.batRuns===1||last.batRuns===3)[inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
+        if ((last.event==='bye'||last.event==='legbye')&&(last.extraRuns===1||last.extraRuns===3))[inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
+      }
       all[inningsIdx]=inn;
       syncToMatch(all[0],all[1],false); return all;
     });
@@ -977,7 +1159,7 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
   const inn0=innings[0],inn1=innings[1],activeInn=innings[inningsIdx];
   const overs0=groupOvers(inn0),overs1=groupOvers(inn1);
   const FONTS=`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Bebas+Neue&family=Rajdhani:wght@400;600;700&display=swap');`;
-  const SCORING_EVENTS=['dot','single','double','triple','four','five','six','seven','wicket','noball','wide','bye','legbye'];
+  const SCORING_EVENTS=['dot','single','double','triple','four','five','six','seven','wicket','dual_wicket','noball','wide','bye','legbye'];
 
   if (!started) {
     return (
@@ -997,8 +1179,6 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
               <input value={val} onChange={e=>set(e.target.value.toUpperCase())} style={{width:'100%',background:'#111827',border:'1px solid #374151',borderRadius:8,color:'#f9fafb',fontSize:16,fontFamily:'Bebas Neue',letterSpacing:2,padding:'12px 16px'}}/>
             </div>
           ))}
-
-          {/* FIX 1: Show actual team players from scoringMatch */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
             {[{label:`TEAM A · ${teamA}`,squad:teamAPlayerData,color:'#22c55e'},{label:`TEAM B · ${teamB}`,squad:teamBPlayerData,color:'#3b82f6'}].map(({label,squad,color})=>(
               <div key={label} style={{background:'#111827',border:`1px solid ${color}22`,borderRadius:8,padding:'10px 12px'}}>
@@ -1017,7 +1197,6 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
               </div>
             ))}
           </div>
-
           <button onClick={startMatch} style={{width:'100%',marginTop:8,background:'linear-gradient(135deg,#16a34a,#22c55e)',border:'none',borderRadius:8,color:'#000',fontFamily:'Orbitron',fontWeight:900,fontSize:14,letterSpacing:2,padding:'14px',cursor:'pointer',boxShadow:'0 0 20px #22c55e44'}}>
             START MATCH →
           </button>
@@ -1079,12 +1258,19 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
                   {SCORING_EVENTS.map(key=>{
                     const meta=EVENT_LABELS[key];
                     const preview=calcDelivery(key,0,'bat');
-                    const needsModal=['noball','wide','bye','legbye','four','six'].includes(key);
+                    const needsModal=['noball','wide','bye','legbye','four','six','wicket'].includes(key);
+                    const hintText = key==='wicket'
+                      ? 'Bat:−2 / Bowl:+6'
+                      : key==='dual_wicket'
+                        ? 'Bat:−2 Bowl:+6 STAYS'
+                        : needsModal
+                          ? '→ SELECT'
+                          : `Bat:${preview.batRuns>=0?'+':''}${preview.batRuns} / Bowl:${preview.bowlScore>=0?'+':''}${preview.bowlScore}`;
                     return (
                       <button key={key} onClick={()=>handleEvent(key)} style={{background:`${meta.color}15`,border:`1.5px solid ${meta.color}44`,borderRadius:8,padding:'10px 14px',color:meta.color,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:4,minWidth:64}}>
                         <span style={{fontFamily:'Orbitron',fontWeight:900,fontSize:18}}>{meta.icon}</span>
                         <span style={{fontFamily:'Orbitron',fontSize:8,letterSpacing:1}}>{meta.label}</span>
-                        <span style={{fontSize:9,color:`${meta.color}aa`,fontFamily:'Rajdhani'}}>{needsModal?'→ SELECT':`Bat:${preview.batRuns>=0?'+':''}${preview.batRuns} / Bowl:${preview.bowlScore>=0?'+':''}${preview.bowlScore}`}</span>
+                        <span style={{fontSize:9,color:`${meta.color}aa`,fontFamily:'Rajdhani'}}>{hintText}</span>
                       </button>
                     );
                   })}
@@ -1118,7 +1304,7 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
         )}
       </div>
 
-      {/* Modals */}
+      {/* ── Modals ───────────────────────────────────────────────────────────── */}
       {modal?.type==='opening'&&(
         <OpeningSetupModal
           battingTeam={modal.inningsIdx===0?teamA:teamB}
@@ -1165,6 +1351,14 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
         <BoundaryOverthrowModal
           event={modal.event}
           onConfirm={handleBoundaryOverthrow}
+          onCancel={()=>setModal(null)}
+        />
+      )}
+      {modal?.type==='wicket'&&activeInn&&(
+        <WicketModal
+          batter={activeInn.batters[activeInn.strikerIdx]?.name ?? ''}
+          bowler={activeInn.bowlers[activeInn.bowlerIdx]?.name ?? ''}
+          onConfirm={handleWicketConfirm}
           onCancel={()=>setModal(null)}
         />
       )}
