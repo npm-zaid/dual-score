@@ -1129,7 +1129,7 @@ export default function BCLScoring({ scoringMatch, updateMatch, setActivePage }:
         if(last.event==='six'||last.event==='six_overthrow')  b.sixes=Math.max(0,b.sixes-1);
       }
       inn.bowlers=bowls;
-      if (!last.isWicket) {
+      if (last.event !== 'wicket')  {
         if (last.batRuns===1||last.batRuns===3)[inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
         if ((last.event==='bye'||last.event==='legbye')&&(last.extraRuns===1||last.extraRuns===3))[inn.strikerIdx,inn.nonStrikerIdx]=[inn.nonStrikerIdx,inn.strikerIdx];
       }
