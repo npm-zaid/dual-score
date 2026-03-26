@@ -785,7 +785,10 @@ export default function AddTournament() {
                   </button>
                 )}
                 <button
-                  onClick={handleAddMatch}
+                  onClick={() => {
+                   
+                    handleSave();
+                  }}
                   style={{
                     padding: '8px 16px', borderRadius: 6, cursor: 'pointer',
                     background: 'linear-gradient(135deg, #16a34a, #22c55e)',
@@ -834,7 +837,10 @@ export default function AddTournament() {
                     >⚡ AUTO ROUND-ROBIN ({tournamentTeams.length * (tournamentTeams.length - 1) / 2} matches)</button>
                   )}
                   <button
-                    onClick={handleAddMatch}
+                     onClick={() => {
+            
+                    handleSave();
+                  }}
                     style={{
                       padding: '10px 20px', borderRadius: 7, cursor: 'pointer',
                       background: 'linear-gradient(135deg, #16a34a, #22c55e)',
